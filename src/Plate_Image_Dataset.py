@@ -51,7 +51,7 @@ class Plate_Image_Dataset(torch.utils.data.Dataset):
        
         # one BoundingBoxes instance per sample, "{img": img, "bbox": BoundingBoxes(...)}" where BoundingBoxes contains all the bounding box vertices associated with that image in the form x1, y1,x2, y2
         self.boxes = torch.from_numpy(np.array(self.boxes)) # [N, 4] tensor, m x n matrix , Rows by cols
-        print(self.boxes.shape)
+        
         image_id = idx
         iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
         area = (self.boxes[:, 3] - self.boxes[:, 1]) * (self.boxes[:, 2] - self.boxes[:, 0]) 

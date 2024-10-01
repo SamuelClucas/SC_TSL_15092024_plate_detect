@@ -8,7 +8,7 @@ from torchvision.io import read_image
 import torch
 from torchvision.transforms.v2 import functional as F
 from torchvision import tv_tensors
-import matplotlib as plt
+import matplotlib.pyplot as plt
 from typing import Dict
 from pathlib import Path
 from typing import Dict, Union
@@ -17,7 +17,10 @@ import lib.utils as utils
 from lib.engine import train_one_epoch, evaluate 
 import PIL
 from torchvision.utils import draw_bounding_boxes
+import torchvision
 import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib
 
 def get_model_instance_bounding_boxes(num_class: int) -> fasterrcnn_resnet50_fpn_v2:
     # New weights with accuracy 80.858%
@@ -145,3 +148,18 @@ def plot_prediction(model, dataset, device):
     plt.figure(figsize=(12, 12))
     plt.imshow(output_image.permute(1, 2, 0))
     plt.show()
+
+def tensorboard_summary(run_name, dataset, model, data_loader) -> SummaryWriter:  # https://pytorch.org/tutorials/intermediate/tensorboard_tutorial.html
+    writer = SummaryWriter(f'runs/{run_name}')
+
+    image, target = dataset[1]
+
+    dataiter = iter(data_loader)
+    images, targets = next(dataiter)
+    
+
+    writer.add_graph(model, images[0])
+    writer.close()
+
+
+

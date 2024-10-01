@@ -20,7 +20,6 @@ from torchvision.utils import draw_bounding_boxes
 from torchvision.io import read_image
 from torch import nn
 
-
 # train on the GPU or on the CPU, if a GPU is not available
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -49,6 +48,7 @@ dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
 dataset_size = len(dataset)
 test_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
 indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
+
 dataset_test = torch.utils.data.Subset(dataset, indices[-test_size:])
 dataset = torch.utils.data.Subset(dataset, indices[:-test_size])
 
@@ -69,6 +69,7 @@ data_loader_test = torch.utils.data.DataLoader(
 num_epochs = 1
 precedent_epoch = 0
 
+helper_training_functions.tensorboard_summary('test', dataset, model, data_loader)
 helper_training_functions.train(dataset, model, num_epochs, precedent_epoch, device, data_loader_test, data_loader)
 
 print("\n -end-")
