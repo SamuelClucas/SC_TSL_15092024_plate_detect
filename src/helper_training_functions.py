@@ -20,7 +20,7 @@ from torchvision.utils import draw_bounding_boxes
 import torchvision
 import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
-import matplotlib
+import matplotlib.pyplot as plt
 
 def get_model_instance_bounding_boxes(num_class: int) -> fasterrcnn_resnet50_fpn_v2:
     # New weights with accuracy 80.858%
@@ -49,9 +49,16 @@ def save_checkpoint(model, optimizer, epoch, save_dir):
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved: {save_path}")
 
-def train(dataset, model, num_epochs, precedent_epoch, device, data_loader_test, data_loader):
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch):
     save_dir = './checkpoints/' 
     model.train()
+
+    # Initialize lists to store metrics
+    train_losses = []
+    val_losses = []
+    train_accuracies = []
+    val_accuracies = []
+
      # construct an optimizer
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(
@@ -67,22 +74,42 @@ def train(dataset, model, num_epochs, precedent_epoch, device, data_loader_test,
         gamma=0.1
     )
     for epoch in range(num_epochs):
-        running_loss = 0.0
-        for i, data in enumerate(data_loader_test):
-            running_loss += loss.item() 
+        # running_loss = 0.0
+        # for i, data in enumerate(data_loader_test):
+        #    running_loss += loss.item() 
+
     # train for one epoch, printing every 10 iterations
-        train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+    
+    # Get the average loss for this epoch
+        epoch_loss = metric_logger.meters['loss'].global_avg
+        train_losses.append(epoch_loss)
 
-        save_checkpoint(model, optimizer, epoch, save_dir)
-    # update the learning rate
-        lr_scheduler.step()
-    # evaluate on the test dataset
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
         model.eval()
-    evaluate(model,device, data_loader_test)
+        
+        eval_metrics =evaluate(model, data_loader_test, device=device)
+        # Extract validation loss and accuracy
+        val_loss = eval_metrics.meters['loss'].global_avg
+        val_accuracy = eval_metrics.meters['accuracy'].global_avg
+        
+        val_losses.append(val_loss)
+        val_accuracies.append(val_accuracy)
+        
+        # Estimate train accuracy (this is just an estimate)
+        train_accuracy = 1.0 - epoch_loss  # This is a very rough estimate
+        train_accuracies.append(train_accuracy)
+        
+        # Plot and save the metrics
+        plot_training_metrics(train_losses, val_losses, train_accuracies, val_accuracies, epoch + precedent_epoch)
+        
+        
+        
+        # Update the learning rate
+        lr_scheduler.step()
 
-    epoch += (precedent_epoch-1)
-
-    return optimizer, epoch
+    return epoch + precedent_epoch
 
 def load_model(save_dir):
     model, preprocess = get_model_instance_bounding_boxes(2)
@@ -98,8 +125,7 @@ def get_feature_maps(model, input_image):
     def hook_fn(module, input, output):
         feature_maps[module] = output
     
-    # Register hooks for the layers you want to visualize
-    # Here we're registering hooks for all convolutional layers in the backbone
+    # Register hooks for the layers to be visualised
     for name, module in model.backbone.named_modules():
         if isinstance(module, nn.Conv2d):
             module.register_forward_hook(hook_fn)
@@ -149,17 +175,30 @@ def plot_prediction(model, dataset, device):
     plt.imshow(output_image.permute(1, 2, 0))
     plt.show()
 
-def tensorboard_summary(run_name, dataset, model, data_loader) -> SummaryWriter:  # https://pytorch.org/tutorials/intermediate/tensorboard_tutorial.html
-    writer = SummaryWriter(f'runs/{run_name}')
 
-    image, target = dataset[1]
 
-    dataiter = iter(data_loader)
-    images, targets = next(dataiter)
+def plot_training_metrics(train_losses, val_losses, train_accuracies, val_accuracies, epoch):
+    plt.figure(figsize=(12, 5))
     
-
-    writer.add_graph(model, images[0])
-    writer.close()
+    plt.subplot(1, 2, 1)
+    plt.plot(train_losses, label='Train Loss')
+    plt.plot(val_losses, label='Validation Loss')
+    plt.title('Loss over epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    
+    plt.subplot(1, 2, 2)
+    plt.plot(train_accuracies, label='Train Accuracy')
+    plt.plot(val_accuracies, label='Validation Accuracy')
+    plt.title('Accuracy over epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Accuracy')
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig(f'training_metrics_epoch_{epoch}.png')
+    plt.close()
 
 
 
