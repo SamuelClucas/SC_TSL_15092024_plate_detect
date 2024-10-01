@@ -64,6 +64,9 @@ def train(dataset, model, num_epochs, precedent_epoch, device, data_loader_test,
         gamma=0.1
     )
     for epoch in range(num_epochs):
+        running_loss = 0.0
+        for i, data in enumerate(data_loader_test):
+            running_loss += loss.item() 
     # train for one epoch, printing every 10 iterations
         train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
 
@@ -124,7 +127,7 @@ def visualize_feature_maps(feature_maps, num_features=64):
         plt.show()
 
 def plot_prediction(model, dataset, device):
-    img, NotImplemented = dataset[6]
+    img, target = dataset[6]
     num_epochs = 1
     print_freq = 10
     save_dir = './checkpoints'  
@@ -136,7 +139,6 @@ def plot_prediction(model, dataset, device):
         predictions = model([image, ])
         pred = predictions[0]
 
-    image = (255.0 * (image - image.min() / (image.max() - image.min())) - image.min()).to(torch.uint8)
     image = image[:3, ...]
     pred_boxes = pred["boxes"].long()
     output_image = draw_bounding_boxes(image, pred_boxes, colors="red")
