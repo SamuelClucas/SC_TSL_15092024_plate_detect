@@ -87,7 +87,7 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
         
         
         # Plot and save the metrics
-        plot_training_metrics(train_losses, val_losses, train_accuracies, val_accuracies, epoch + precedent_epoch)
+        plot_eval_metrics(train_losses, epoch + precedent_epoch)
         
         # Update the learning rate
         lr_scheduler.step()
