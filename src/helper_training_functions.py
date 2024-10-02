@@ -55,9 +55,6 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
 
     # Initialize lists to store metrics
     train_losses = []
-    val_losses = []
-    train_accuracies = []
-    val_accuracies = []
 
      # construct an optimizer
     params = [p for p in model.parameters() if p.requires_grad]
@@ -87,37 +84,35 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
 
         # Save checkpoint
         save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
-        model.eval()
         
-        eval_metrics =evaluate(model, data_loader_test, device=device)
-        # Extract validation loss and accuracy
-        val_loss = eval_metrics.meters['loss'].global_avg
-        val_accuracy = eval_metrics.meters['accuracy'].global_avg
-        
-        val_losses.append(val_loss)
-        val_accuracies.append(val_accuracy)
-        
-        # Estimate train accuracy (this is just an estimate)
-        train_accuracy = 1.0 - epoch_loss  # This is a very rough estimate
-        train_accuracies.append(train_accuracy)
         
         # Plot and save the metrics
         plot_training_metrics(train_losses, val_losses, train_accuracies, val_accuracies, epoch + precedent_epoch)
         
-        
-        
         # Update the learning rate
         lr_scheduler.step()
 
-    return epoch + precedent_epoch
+    return epoch + precedent_epoch, train_losses
 
 def load_model(save_dir):
     model, preprocess = get_model_instance_bounding_boxes(2)
-    checkpoint = torch.load(save_dir + '/checkpoint_epoch_1.pth', weights_only=True)
+    checkpoint = torch.load(save_dir + '/checkpoint_epoch_0.pth', weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
     #optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     #epoch = checkpoint['epoch']
     return model
+
+def evaluate_model(model, data_loader_test,device):
+    val_metrics = []
+    model.eval()
+
+    coco_evaluator = evaluate(model, data_loader_test, device=device)
+        
+    # Extract evaluation metrics
+    eval_stats = coco_evaluator.coco_eval['bbox'].stats
+    val_metrics.append(eval_stats)
+    return val_metrics
+
 
 def get_feature_maps(model, input_image):
     feature_maps = {}
@@ -176,29 +171,46 @@ def plot_prediction(model, dataset, device):
     plt.show()
 
 
-
-def plot_training_metrics(train_losses, val_losses, train_accuracies, val_accuracies, epoch):
-    plt.figure(figsize=(12, 5))
+def plot_eval_metrics(eval_metrics, epoch):
+    plt.figure(figsize=(15, 10))
     
-    plt.subplot(1, 2, 1)
-    plt.plot(train_losses, label='Train Loss')
-    plt.plot(val_losses, label='Validation Loss')
-    plt.title('Loss over epochs')
+   # # Plot training loss
+   # plt.subplot(2, 2, 1)
+   # plt.plot(train_losses, label='Train Loss')
+   # plt.title('Training Loss over epochs')
+   # plt.xlabel('Epoch')
+   # plt.ylabel('Loss')
+   # plt.legend()
+    
+    # Plot mAP@[0.5:0.95]
+    plt.subplot(2, 2, 2)
+    map_values = [metrics[0] for metrics in eval_metrics]
+    plt.plot(map_values, label='mAP@[0.5:0.95]')
+    plt.title('mAP@[0.5:0.95] over epochs')
     plt.xlabel('Epoch')
-    plt.ylabel('Loss')
+    plt.ylabel('mAP')
     plt.legend()
     
-    plt.subplot(1, 2, 2)
-    plt.plot(train_accuracies, label='Train Accuracy')
-    plt.plot(val_accuracies, label='Validation Accuracy')
-    plt.title('Accuracy over epochs')
+    # Plot mAP@0.5
+    plt.subplot(2, 2, 3)
+    map50_values = [metrics[1] for metrics in eval_metrics]
+    plt.plot(map50_values, label='mAP@0.5')
+    plt.title('mAP@0.5 over epochs')
     plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
+    plt.ylabel('mAP')
+    plt.legend()
+    
+    # Plot mAR@[0.5:0.95]
+    plt.subplot(2, 2, 4)
+    mar_values = [metrics[8] for metrics in eval_metrics]
+    plt.plot(mar_values, label='mAR@[0.5:0.95]')
+    plt.title('mAR@[0.5:0.95] over epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('mAR')
     plt.legend()
     
     plt.tight_layout()
     plt.savefig(f'training_metrics_epoch_{epoch}.png')
     plt.close()
-
 
 
