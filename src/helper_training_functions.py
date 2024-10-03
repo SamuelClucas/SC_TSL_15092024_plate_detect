@@ -22,7 +22,7 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 
-def get_model_instance_bounding_boxes(num_class: int) -> fasterrcnn_resnet50_fpn_v2:
+def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_fpn_v2:
     # New weights with accuracy 80.858%
     weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT # alias is .DEFAULT suffix, weights = None is random initialisation, box MAP 46.7, params, 43.7M, GFLOPS 280.37 https://github.com/pytorch/vision/pull/5763
     model = fasterrcnn_resnet50_fpn_v2(weights=weights, box_score_thresh=0.0001)
@@ -95,7 +95,7 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
     return epoch + precedent_epoch, train_losses
 
 def load_model(save_dir):
-    model, preprocess = get_model_instance_bounding_boxes(2)
+    model, preprocess = get_model_instance_object_detection(2)
     checkpoint = torch.load(save_dir + '/checkpoint_epoch_0.pth', weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
     #optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -131,7 +131,7 @@ def get_feature_maps(model, input_image):
     
     return feature_maps
 
-def visualize_feature_maps(feature_maps, num_features=64):
+def visualise_feature_maps(feature_maps, num_features=64):
     for layer, feature_map in feature_maps.items():
         # Get the first image in the batch
         feature_map = feature_map[0]
