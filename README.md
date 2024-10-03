@@ -1,4 +1,5 @@
-# Developing a faster RCNN model auxillary to 
+##Goal:
+Develop a faster RCNN model auxillary to 
 [TimelapsEr](https://github.com/SamuelClucas/SC_TSL_09092024_TimelapsEr) 
 and the [imaging 
 system](https://github.com/SamuelClucas/SC_TSL_06082024_Imaging-System-Design) 
