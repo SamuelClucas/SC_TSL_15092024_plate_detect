@@ -35,6 +35,14 @@ from torchvision.utils import draw_bounding_boxes
 from torchvision.io import read_image
 from torch import nn
 ```
+**Notes:** when running on the cluster, change any import statements that import modules defined within the project directory (this includes some files in lib/). Here is an example:
+```{python}
+#| eval: false
+from src import Plate_Image_Dataset, helper_training_functions
+# to...
+from SC_TSL_15092024_plate_detect.src import PLate_Image_Dataset, helper_training_functions
+
+```
 
 ### if __name__ == '__main__':
 #### Setting up directories and instantiating model instance...
