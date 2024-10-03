@@ -1,0 +1,267 @@
+---
+title: "Evaluating checkpoints/epoch_0 mAP and mAR on unseen validation dataset"
+date: 20-09-2024
+date-format: short
+---
+
+### Purpose:
+
+### Programme Overview:
+
+#### Imports:
+```{python}
+from src import Plate_Image_Dataset, helper_training_functions
+import torch
+
+from torchvision.transforms.v2 import functional as F
+from pathlib import Path
+from typing import Dict, Union
+from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2, FastRCNNPredictor, FasterRCNN_ResNet50_FPN_V2_Weights
+from torchvision.transforms import v2 as T
+import lib.utils as utils
+from lib.engine import train_one_epoch, evaluate 
+import os
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import numpy as np
+import PIL
+from torchvision.utils import draw_bounding_boxes
+from torchvision.io import read_image
+from torch import nn
+```
+
+#### Other function, class etc.,
+```{python}
+model = helper_training_functions.load_model('checkpoints')
+eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test,device)
+    
+helper_training_functions.plot_eval_metrics(eval_metrics, 0)
+```
+
+**Breakdown:** \
+```{python}
+pass
+```
+
+- stepwise breakdown \
+
+#### Main:
+```{python}
+pass
+```
+
+**Breakdown:** \
+- stepwise breakdown \
+
+### Next step:
+---
+title: "downsize.py"
+date: 20-09-2024
+date-format: short
+---
+
+### Purpose:
+
+### Programme Overview:
+
+#### Imports:
+```{python}
+pass
+```
+
+#### Other function, class etc.,
+```{python}
+pass
+```
+
+**Breakdown:** \
+```{python}
+pass
+```
+
+- stepwise breakdown \
+
+#### Main:
+```{python}
+pass
+```
+
+**Breakdown:** \
+- stepwise breakdown \
+
+### Next step:---
+title: "downsize.py"
+date: 20-09-2024
+date-format: short
+---
+
+### Purpose:
+
+### Programme Overview:
+
+#### Imports:
+```{python}
+pass
+```
+
+#### Other function, class etc.,
+```{python}
+pass
+```
+
+**Breakdown:** \
+```{python}
+pass
+```
+
+- stepwise breakdown \
+
+#### Main:
+```{python}
+pass
+```
+
+**Breakdown:** \
+- stepwise breakdown \
+
+### Next step:---
+title: "downsize.py"
+date: 20-09-2024
+date-format: short
+---
+
+### Purpose:
+
+### Programme Overview:
+
+#### Imports:
+```{python}
+pass
+```
+
+#### Other function, class etc.,
+```{python}
+pass
+```
+
+**Breakdown:** \
+```{python}
+pass
+```
+
+- stepwise breakdown \
+
+#### Main:
+```{python}
+pass
+```
+
+**Breakdown:** \
+- stepwise breakdown \
+
+### Next step:---
+title: "downsize.py"
+date: 20-09-2024
+date-format: short
+---
+
+### Purpose:
+
+### Programme Overview:
+
+#### Imports:
+```{python}
+pass
+```
+
+#### Other function, class etc.,
+```{python}
+pass
+```
+
+**Breakdown:** \
+```{python}
+pass
+```
+
+- stepwise breakdown \
+
+#### Main:
+```{python}
+pass
+```
+
+**Breakdown:** \
+- stepwise breakdown \
+
+### Next step:---
+title: "program_name.py"
+date: dd-mm-yyyy
+date-format: short
+---
+
+### Purpose:
+
+### Programme Overview:
+
+#### Imports:
+```{python}
+pass
+```
+
+#### Other function, class etc.,
+```{python}
+pass
+```
+
+**Breakdown:** \
+```{python}
+pass
+```
+
+- stepwise breakdown \
+
+#### Main:
+```{python}
+pass
+```
+
+**Breakdown:** \
+- stepwise breakdown \
+
+### Next step:---
+title: "downsize.py"
+date: 20-09-2024
+date-format: short
+---
+
+### Purpose:
+
+### Programme Overview:
+
+#### Imports:
+```{python}
+pass
+```
+
+#### Other function, class etc.,
+```{python}
+pass
+```
+
+**Breakdown:** \
+```{python}
+pass
+```
+
+- stepwise breakdown \
+
+#### Main:
+```{python}
+pass
+```
+
+**Breakdown:** \
+- stepwise breakdown \
+
+### Next step:
