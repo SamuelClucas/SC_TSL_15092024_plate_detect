@@ -35,7 +35,7 @@ if __name__ == '__main__':
 
     num_class = 2 # plate or background
     # creates resnet50 v2 faster r cnn model with new head for class classification
-    model, preprocess = helper_training_functions.get_model_instance_bounding_boxes(num_class)
+    model, preprocess = helper_training_functions.get_model_instance_object_detection(num_class)
     # move model to the right device
     model.to(device)
 
