@@ -112,8 +112,15 @@ the only modification being that the pretrained model is not downloaded
 from the [pytorch models
 site](https://download.pytorch.org/models/resnet101-5d3b4d8f.pth)
 directly within the code due to HPC constraints. It is instead loaded
-from a local .pth file in a models directory. - The .pth file download
-link: https://download.pytorch.org/models/resnet50-11ad3fa6.pth  
+from a local .pth file in a models directory. It is worth noting that
+I’m taking code written for their mask module, but I believe analogous
+classes defined in the other module directories (occlusion boundaries,
+surface normals) are identical. I need to train the model on the
+[transparent object
+dataset](https://sites.google.com/view/transparent-objects) for the
+convolutional layer (for feature map extraction). - The .pth file
+download link:
+https://download.pytorch.org/models/resnet50-11ad3fa6.pth  
 
 ``` python
 class ResNet(nn.Module):
