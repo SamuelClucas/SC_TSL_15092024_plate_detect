@@ -4,7 +4,7 @@
 
 ### Purpose:
 
-The following defines a class used to instantiate neural networks based
+The following defines a class used to instantiate a neural network based
 on google’s [cleargrasp](https://sites.google.com/view/cleargrasp). Its
 pre-trained backbone may be particularly suited to the recognition of
 transparent microbe plates. I believe a faster R-CNN with a cleargrasp
