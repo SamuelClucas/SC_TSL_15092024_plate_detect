@@ -1,0 +1,27 @@
+---
+title: "Setup Pre-Training ResNet50 Model"
+date: 05-10-2024
+date-format: short
+---
+
+### Purpose:
+Before training, the model must be loaded. 
+
+#### Imports:
+```{python}
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from src import ResNet, get_ResNet
+```
+
+#### Main
+```{python}
+if __name__ == "__main__":
+    model_dir = 'resnet50-11ad3fa6.pth'
+    model = get_ResNet(model_dir, BatchNorm=nn.BatchNorm2d, pretrained=True, output_stride=8)
+    input = torch.rand(1, 3, 512, 512)
+    output, low_level_feat = model(input)
+    print(output.size())
+    print(low_level_feat.size())
+```
