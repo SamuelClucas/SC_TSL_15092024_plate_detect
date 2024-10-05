@@ -12,7 +12,7 @@ Before training, the model must be loaded.
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from lib.ResNet50 import ResNet, get_ResNet
+from lib.ResNet101 import ResNet, ResNet101
 ```
 
 #### Main

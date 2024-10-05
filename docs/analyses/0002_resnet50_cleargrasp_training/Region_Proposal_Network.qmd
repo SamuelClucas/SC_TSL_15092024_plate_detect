@@ -1,0 +1,40 @@
+---
+title: "Defining a Region Proposal Network Class"
+date: 05-10-2024
+date-format: short
+---
+
+*Note:* see figure 3 of [this paper](https://arxiv.org/pdf/1506.01497) for a visual representation of a Region Proposal Network (RPN).
+
+- Each 'anchor' box varies in either scale or aspect-ratio. 
+- The number of anchor boxes used in a give RPN is denoted by 'k'.
+- The anchor boxes/'windows' slide over feature maps output from the convolutional layer in the RPN. 
+- They then undergo [Region of Interest (ROI) pooling](https://paperswithcode.com/method/roi-pooling) in an ROI align layer, in which each ROI is divided into equal parts, followed my max-pooling/non-max suppression of said parts. This homogenises the dimensions of proposed ROIs, which in theory prevents a network bias towards larger anchor boxes.
+- For the detection heads, the network has two fully-connected layers (siblings). One is a classication layer, outputting 2k probability scores (2*k-many anchor boxes). The other a [bounding box regression](https://ambolt.io/en/how-object-detectors-learn/#:~:text=Bounding%20Box%20regression%20is%20a,the%20ground%20truth%20bounding%20boxes.) layer, outputting 4k coordinates (the vertices of 4 * k-many anchor boxes).
+
+```{python}
+class RPN(nn.Module):
+    def __init__(self, in_channels, anchor_scales=[8, 16, 32]):
+        super(RPN, self).__init__()
+        
+        self.anchor_scales = anchor_scales
+        self.n_anchors = len(anchor_scales)
+        
+        # RPN Conv layer
+        self.conv = nn.Conv2d(in_channels, 512, kernel_size=3, padding=1)
+        
+        # Box classification layer (background/microbe plate)
+        self.cls_layer = nn.Conv2d(512, self.n_anchors * 2, kernel_size=1)
+        
+        # Box regression layer (x, y, w, h)
+        self.bbox_layer = nn.Conv2d(512, self.n_anchors * 4, kernel_size=1)
+        
+    def forward(self, x):
+        x = F.relu(self.conv(x))
+        
+        # Get class scores and bbox predictions
+        cls_scores = self.cls_layer(x)
+        bbox_preds = self.bbox_layer(x)
+        
+        return cls_scores, bbox_preds
+```
