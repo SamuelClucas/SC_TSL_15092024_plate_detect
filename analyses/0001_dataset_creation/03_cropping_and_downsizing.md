@@ -1,24 +1,23 @@
-# downsize.py
+# Cropping and Downsizing
 
 8/9/25
 
 ### Purpose:
 
 The libcamera_still_capture.sh script that drives the arducam module in
-[TimelapsEr](https://github.com/SamuelClucas/SC_TSL_09092024_TimelapsEr/tree/main)
-takes 4K images. I used Timelapser’s start_timelapse.py script to create
+[timelapser](https://github.com/SamuelClucas/SC_TSL_09092024_timelapser)
+takes 4K images. I used timelapser’s start_timelapse.py script to create
 the image dataset to train models in this repo, hence my images are also
-in 4K.
+in 4K.  
 
-As in the reference [paper](https://arxiv.org/pdf/1506.01497), I need my
-input images to be scaled down so that their shortest side is 600 pixels
-in length.
+As in the reference [paper](https://arxiv.org/pdf/1506.01497), I need to
+scale down the dataset samples so that their shortest side is 600 pixels
+in length.  
 
 The following program crops the raw .png images down into composite
-images and scales them down. For the sake of space and time efficiency,
-I have included just one
-[‘raw_example.png’](../../../train/images/raw_example/raw_example.png)
-image.
+images and scales them down. For the sake of space and time efficiency
+(as git struggles with large file uploads), I have included just one
+[‘raw_example.png’](images/raw_example.png) image.  
 
 ### Program Overview:
 
@@ -66,10 +65,13 @@ if __name__ == '__main__':
 raw image), then scaled down so that their shortest side is 600 pixels
 long, like these:
 
-<img src="../../../train/images/mixed/0_0_0916161659.png" width="250"
+<img src="images/downsized/0_0_0916161659.png" width="250"
 alt="image" />
-<img src="../../../train/images/mixed/0_1_0916161726.png" width="250"
+<img src="images/downsized/0_1_0916161726.png" width="250"
 alt="image" />
+<img src="images/downsized/0_2_raw_example.png" width="250"
+alt="image" />  
+And so on…  
 
 - This is achieved by looping through each .png in the directory (here,
   just a single ‘raw_example.png’) in which another 2 for loops use
