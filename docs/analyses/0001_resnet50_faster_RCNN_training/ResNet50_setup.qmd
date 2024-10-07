@@ -49,7 +49,6 @@ from SC_TSL_15092024_plate_detect.src import PLate_Image_Dataset, helper_trainin
 
 ```
 
-### if __name__ == '__main__':
 #### Setting up directories and instantiating model...
 ```{python}
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')

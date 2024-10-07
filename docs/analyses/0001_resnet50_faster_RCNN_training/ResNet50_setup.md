@@ -67,8 +67,6 @@ from src import Plate_Image_Dataset, helper_training_functions
 from SC_TSL_15092024_plate_detect.src import PLate_Image_Dataset, helper_training_functions
 ```
 
-### if **name** == ‘**main**’:
-
 #### Setting up directories and instantiating model…
 
 ``` python
