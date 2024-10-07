@@ -65,13 +65,14 @@ if __name__ == '__main__':
 raw image), then scaled down so that their shortest side is 600 pixels
 long, like these:
 
-<img src="images/downsized/0_0_raw_example.png" width="50"
+<img src="images/downsized/0_0_raw_example.png" width="100"
 alt="image" />
-<img src="images/downsized/0_1_raw_example.png" width="50"
+<img src="images/downsized/0_1_raw_example.png" width="100"
 alt="image" />
-<img src="images/downsized/0_2_raw_example.png" width="50"
-alt="image" />  
-And so on…  
+<img src="images/downsized/0_2_raw_example.png" width="100"
+alt="image" />
+<img src="images/downsized/0_3_raw_example.png" width="100"
+alt="image" /> And so on…  
 
 - This is achieved by looping through each .png in the directory (here,
   just a single ‘raw_example.png’) in which another 2 for loops use
