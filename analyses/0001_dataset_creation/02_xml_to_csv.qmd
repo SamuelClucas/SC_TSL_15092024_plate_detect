@@ -88,7 +88,7 @@ def xml_to_csv(path):
 
 #### Main: \
 ```{python}
-#| output: false
+
 def main():
     image_path = Path('/Users/cla24mas/Documents/My_Repos/SC_plate_detect/analyses/0001_dataset_creation/xml_labels')
     print(f"Searching for XML files in: {image_path}")
