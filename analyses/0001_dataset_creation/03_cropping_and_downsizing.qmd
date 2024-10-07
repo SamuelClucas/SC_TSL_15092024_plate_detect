@@ -55,9 +55,9 @@ if __name__ == '__main__':
 **Breakdown:** \
 - Each raw image is cropped into 4x4 composite images (16 sub-images per raw image), then scaled down so that their shortest side is 600 pixels long, like these:
 
-![image](images/downsized/0_0_0916161659.png){width=250}
-![image](images/downsized/0_1_0916161726.png){width=250}
-![image](images/downsized/0_2_raw_example.png){width=250} \
+![image](images/downsized/0_0_raw_example.png){width=50}
+![image](images/downsized/0_1_raw_example.png){width=50}
+![image](images/downsized/0_2_raw_example.png){width=50} \
 And so on... \
 
 - This is achieved by looping through each .png in the directory (here, just a single 'raw_example.png') in which another 2 for loops use [array slicing](https://www.w3schools.com/python/numpy/numpy_array_slicing.asp) to crop the raw image into its composite sub-sections. 

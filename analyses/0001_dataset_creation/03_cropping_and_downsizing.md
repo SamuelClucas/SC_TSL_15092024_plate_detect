@@ -65,11 +65,11 @@ if __name__ == '__main__':
 raw image), then scaled down so that their shortest side is 600 pixels
 long, like these:
 
-<img src="images/downsized/0_0_0916161659.png" width="250"
+<img src="images/downsized/0_0_raw_example.png" width="50"
 alt="image" />
-<img src="images/downsized/0_1_0916161726.png" width="250"
+<img src="images/downsized/0_1_raw_example.png" width="50"
 alt="image" />
-<img src="images/downsized/0_2_raw_example.png" width="250"
+<img src="images/downsized/0_2_raw_example.png" width="50"
 alt="image" />  
 And so on…  
 
