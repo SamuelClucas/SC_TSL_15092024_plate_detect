@@ -58,8 +58,8 @@ if __name__ == '__main__':
 ![image](images/downsized/0_0_raw_example.png){width=100}
 ![image](images/downsized/0_1_raw_example.png){width=100}
 ![image](images/downsized/0_2_raw_example.png){width=100} 
-![image](images/downsized/0_3_raw_example.png){width=100}
-And so on... \
+![image](images/downsized/0_3_raw_example.png){width=100} \
+*And so on...* \
 
 - This is achieved by looping through each .png in the directory (here, just a single 'raw_example.png') in which another 2 for loops use [array slicing](https://www.w3schools.com/python/numpy/numpy_array_slicing.asp) to crop the raw image into its composite sub-sections. 
 - Each crop is stored in 'roi' which is scaled down so that its shortest side is 600 pixels long.
