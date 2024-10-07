@@ -59,11 +59,12 @@ looking down.
 
 ### Using timelapser: 
 
-Any appropriate capture for the timelapse would work. As an example, I
-ran:  
+Any appropriate image capture rate for the timelapse would work. As an
+example:  
 
 ``` {bash}
 #| eval: false
+
 cd path/to/timelapser
 source camera/bin/activate 
 sudo camera/bin/python3 scripts/start_timelapse.py --units h --duration 1 --samples 120 --path path/to/desired/image/output/directory
