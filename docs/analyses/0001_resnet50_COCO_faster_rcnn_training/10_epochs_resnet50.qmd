@@ -128,7 +128,6 @@ helper_training_functions.plot_eval_metrics(eval_metrics, epoch)
 print("\n -end-")
 
 ```
-
 **Breakdown:** \
 - See [helper_training_functions.qmd](helper_training_functions.qmd) for detail on how these functions work.
 - *Note* I have only set it to train for 1 epoch here just to show the output. I need to train for longer on cluster.
