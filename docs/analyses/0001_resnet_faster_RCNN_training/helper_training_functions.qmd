@@ -5,7 +5,7 @@ date-format: short
 ---
 
 ### Purpose: 
-I created numerous helpful utility functions for this project. This document explains each one. Occasionally I had to further develop some of these functions so that they are compatible with training on the cluster. For example, I initially wrote 'get_model_instance_object_detection()' to isolate model configuration. The model is returned to whatever script needs it, making the latter more succinct. Pytorch has a [zoo of models](https://pytorch.org/serve/model_zoo.html) which can easily be imported into scripts and manipulated - this does require permissions to install the model .pth files from the internet. This is awkward on the cluster. See [the error file](./error.6840352.err). For this reason, there are multiple usable iterations of this function. Whilst not used for training on the cluster, they still work and may be useful in some other context.
+I created numerous helpful utility functions for this project. This document serves to explain each one. 
 
 ### Programme Overview:
 
@@ -80,7 +80,7 @@ def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_f
     pass
 ```
 **Breakdown:** \
-- the hurdle presented by training on the cluster was a blessing in disguise, as it prompted a closer investigation of the pytorch documentation, in which I found exactly [what I was looking for](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html) - a faster R-CNN with a Resnet-50 backbone (where by 'backbone' I mean the convolutional layer/module used to extract features for the successive Region Proposal Network and classification/bounding box regression heads). This means unlike in the first instance of this helper function, I do not have to manipulate the model's architecture in any way, diminishing the degrees of freedom I have to make an error. I can be relatively confident that it is configured correctly. The documentation states that it is based on the "[Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks](https://arxiv.org/abs/1506.01497)" paper, which is also reassuring. \
+- See pytorch's documentation on [ResNet50 faster R-CNN backbone]](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html) - (where by 'backbone' I mean the convolutional layer/module used to extract features for the succeeding Region Proposal Network and classification/bounding box regression heads). The documentation states that it is based on the "[Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks](https://arxiv.org/abs/1506.01497)" paper, which is reassuring. \
 - the model behaves differently depending on its mode (evaluation or training). In training mode, the model expects input tensors (images) and targets (list of dictionary containing bounding boxes [N, 4], with vertices in the format [x1, y1, x2, y2] and class labels in the format Int64Tensor[N] where N is the number of bounding boxes in a given image, or the number of distinct classes, respectively). \
 
 #### Main:

@@ -74,7 +74,7 @@ if __name__ == '__main__':
 
     eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test,device)
 
-    helper_training_functions.plot_eval_metrics(eval_metrics, epoch)
+    helper_training_functions.plot_eval_metrics(eval_metrics, 0)
 
     #helper_training_functions.tensorboard_summary('test', dataset, model, data_loader)
 
