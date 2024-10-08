@@ -7,13 +7,13 @@ to handle identification of plates, labels, and colonies, by the system
 within the incubator.
 
 #### Handling local dependencies and external dependency imports: 
-All dirs inside src containing __init__.py will be installed as packages under their own namespace, facilitating imports. This includes handling imports of external dependencies used in scripts that are not indexed on PyPi (such as [google cleargrasp](https://github.com/Shreeyak/cleargrasp)). \n
-Before running scripts/*.py, use:
+All dirs inside src containing __init__.py will be installed as packages under their own namespace, facilitating imports. This includes handling imports of external dependencies used in scripts that are not indexed on PyPi (such as [google cleargrasp](https://github.com/Shreeyak/cleargrasp)).\
+Before running scripts/*.py, use:\
 
 ``` 
 pip install -e .
 ```
-or, if not developing the project, just:
+or, if not developing the project, just:\
 
 ```
 pip install .
