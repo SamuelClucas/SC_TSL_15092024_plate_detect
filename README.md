@@ -5,3 +5,15 @@ and the [imaging
 system](https://github.com/SamuelClucas/SC_TSL_06082024_Imaging-System-Design) 
 to handle identification of plates, labels, and colonies, by the system 
 within the incubator.
+
+All dirs inside src containing __init__.py will be installed as packages under their own namespace, facilitating imports. 
+Run:
+
+``` 
+pip install -e .
+```
+or, if not developing the project, just:
+
+```
+pip install .
+```
