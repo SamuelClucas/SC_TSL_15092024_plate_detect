@@ -18,7 +18,7 @@ import torch
 from torchvision.transforms.v2 import functional as F
 from torchvision import tv_tensors
 from typing import Dict
-from torchvision_deps.T_utils import utils
+from torchvision_deps.T_and_utils import utils
 
 class Negatives_Image_Dataset(torch.utils.data.Dataset):
     def __init__(self, img_dir: str, transforms=None):

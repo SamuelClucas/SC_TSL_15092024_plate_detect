@@ -3,7 +3,7 @@ import os
 import torch
 import torch.utils.data
 import torchvision
-import torchvision_deps.T_utils.transforms as T
+import torchvision_deps.T_and_utils.transforms as T
 from pycocotools import mask as coco_mask
 from pycocotools.coco import COCO
 

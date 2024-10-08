@@ -28,7 +28,7 @@ import PIL
 from torchvision.utils import draw_bounding_boxes
 from torchvision.io import read_image
 import torch.nn as nn
-import torchvision_deps.T_utils.utils as utils
+import torchvision_deps.T_and_utils.utils as utils
 
 weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
 preprocess = weights.transforms()
@@ -46,7 +46,7 @@ print("I've got the model")
 # move model to the right device
 model.to(device)
 
-dataset: Negatives_Image_Dataset_copy = Negatives_Image_Dataset.Negatives_Image_Dataset(
+dataset: Negatives_Image_Dataset = Negatives_Image_Dataset.Negatives_Image_Dataset(
     img_dir=str(img_dir), 
     transforms=preprocess, # converts Tensor image, PIL image, NumPy ndarray into FloatTensor and scales pixel intensities in range [0.,1.].
 )
