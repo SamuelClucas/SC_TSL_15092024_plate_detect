@@ -34,8 +34,8 @@ from pathlib import Path
 
 ``` python
 if __name__ == '__main__':
-    inputPath = Path('/Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_Plate_Detect/train/images/raw_example/')
-    outputPath = '/Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_Plate_Detect/train/images/raw_example/downsized/'
+    inputPath = Path('path/to/raw/uncropped/images')
+    outputPath = 'desired/output/path'
 
     for img in inputPath.iterdir():
         if not img.name.startswith('.') and img.name.endswith('.png'):
