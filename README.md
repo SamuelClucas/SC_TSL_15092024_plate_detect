@@ -13,7 +13,7 @@ Before running scripts/*.py, use:
 ``` 
 pip install -e .
 ```
-or, if not developing the project, just:  
+Or, if not developing the project, just:  
 
 ```
 pip install .
