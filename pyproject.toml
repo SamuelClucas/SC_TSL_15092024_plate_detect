@@ -1,15 +1,27 @@
 [project]
-name = "SC_TSL_15092024_Plate_Detect"
+name = "SC_plate_detect"
 version = "0.1.0"
-description = "SC_TSL_15092024_Plate_Detect"
+description = "Object detection for microbe growth plates"
+dependencies = [
+    "opencv-python-headless",
+    "numpy<2",
+    "pillow",
+    "torch",
+    "torchvision",
+    "pandas",
+    "pycocotools",
+]
+readme = "README.md"
 
 [build-system]
-build-backend = "flit_core.buildapi"
-requires = ["flit_core >=3.2,<4"]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
 
-[tool.flit.module]
-name = "src"
 
-[tool.flit.sdist]
-include = ["src/", "lib/"]
+
+
+
+
+
+
 

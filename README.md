@@ -1,5 +1,5 @@
 ## Goal:
-Develop a faster R-CNN model auxillary to 
+Develop a Faster R-CNN model ancillary to 
 [TimelapsEr](https://github.com/SamuelClucas/SC_TSL_09092024_TimelapsEr) 
 and the [imaging 
 system](https://github.com/SamuelClucas/SC_TSL_06082024_Imaging-System-Design) 

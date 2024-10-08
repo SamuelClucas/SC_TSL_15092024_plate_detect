@@ -9,3 +9,5 @@ __pycache__/
 __pycache__
 
 train/*
+
+plate_detect.egg-info/*
