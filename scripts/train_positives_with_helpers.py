@@ -17,7 +17,7 @@ import PIL
 from torchvision.utils import draw_bounding_boxes
 from torchvision.io import read_image
 from torch import nn
-import torchvision_deps.T_utils.utils as utils
+import torchvision_deps.T_and_utils.utils as utils
 
 if __name__ == '__main__':
     # train on the GPU or on the CPU, if a GPU is not available
@@ -29,7 +29,7 @@ if __name__ == '__main__':
     annotations_file: Path = project_dir_root.joinpath('lib', 'labels.csv')
     print(f'Training labels csv file: {annotations_file}')
 
-    img_dir: Path= project_dir_root.joinpath('train', 'images', 'positives')  # 'SC_TSL_15092024_Plate_Detect/train/images/positives/' on UNIX systems
+    img_dir: Path= project_dir_root.joinpath('raw', 'positives')  # 'SC_TSL_15092024_Plate_Detect/train/images/positives/' on UNIX systems
     print(f'Training dataset directory: {img_dir}')
 
     num_class = 2 # plate or background
