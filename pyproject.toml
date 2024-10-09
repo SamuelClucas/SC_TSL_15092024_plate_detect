@@ -1,0 +1,27 @@
+[project]
+name = "SC_plate_detect"
+version = "0.1.0"
+description = "Object detection for microbe growth plates"
+dependencies = [
+    "opencv-python-headless",
+    "numpy<2",
+    "pillow",
+    "torch",
+    "torchvision",
+    "pandas",
+    "pycocotools",
+]
+readme = "README.md"
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+
+
+
+
+
+
+
+
