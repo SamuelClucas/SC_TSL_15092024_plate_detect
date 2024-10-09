@@ -11,10 +11,12 @@ All dirs inside src containing __init__.py will be installed as packages under t
 Before running scripts/*.py, use:  
 
 ``` 
+pip install --upgrade pip
 pip install -e .
 ```
 Or, if not developing the project, just:  
 
 ```
+pip install --upgrade pip
 pip install .
 ```

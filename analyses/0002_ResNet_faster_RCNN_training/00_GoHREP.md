@@ -49,36 +49,39 @@ clear training data, the network should be abe to detect plates in
 images to at least some degree of accuracy. The question is whether or
 not this accuracy is high enough to be practically useful.  
 
-Experimental Plan:  
+### Experimental Plan: 
+
 - I will use PyTorch. Firstly, I need to write two custom dataset
-classes to handle storing and accessing images and their corresponding
-bounding box vertices for both the positives and negatives datasets (the
-latter to be used in [hard negatives
-mining](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123590120.pdf)
-to further optimise the model).  
+  classes to handle storing and accessing images and their corresponding
+  bounding box vertices for both the positives and negatives datasets
+  (the latter to be used in [hard negatives
+  mining](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123590120.pdf)
+  to further optimise the model).  
 - Once instantiated, this class is passed to PyTorch’s DataLoader for
-training or evaluation, as outlined in this [pytorch
-tutorial](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html).
-I would like to write a helper_training_functions src file to be
-imported in training scripts to keep the latter concise and readable.  
+  training or evaluation, as outlined in this [pytorch
+  tutorial](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html).
+  I would like to write a helper_training_functions src file to be
+  imported in training scripts to keep the latter concise and
+  readable.  
 - Training on the cluster requires that scripts don’t need to download
-files at runtime. This will require a local Faster R-CNN class
-definition file.  
--
-[ResNet50](https://blog.roboflow.com/what-is-resnet-50/#:~:text=One%20such%20architecture%20is%20called,it%2C%20and%20categorize%20them%20accordingly.)‘s
-COCO or ImageNet pre-trained weights aren’t going to be useful. This is
-common sense. ’Non-lambertian’ or transparent objects form a minority
-within these datasets, which isn’t helpful in training a network to
-recognise an object that is transparent. For this reason, I will train a
-ResNet backbone (I’m not sure many layers this will have, perhaps
-50-layer or 101-layer) on a transparent object dataset. Google’s
-[cleargrasp](https://github.com/Shreeyak/cleargrasp/tree/master) project
-required the creation of [transparent object
-datasets](https://sites.google.com/view/transparent-objects). I will
-train the network on these first, with the hopes that the backbone will
-then be primed to extract features typical of transparent objects.  
+  files at runtime. This will require a local Faster R-CNN class
+  definition file.  
+- [ResNet50](https://blog.roboflow.com/what-is-resnet-50/#:~:text=One%20such%20architecture%20is%20called,it%2C%20and%20categorize%20them%20accordingly.)‘s
+  COCO or ImageNet pre-trained weights aren’t going to be useful. This
+  is common sense. ’Non-lambertian’ or transparent objects form a
+  minority within these datasets, which isn’t helpful in training a
+  network to recognise an object that is transparent. For this reason, I
+  will train a ResNet backbone (I’m not sure many layers this will have,
+  perhaps 50-layer or 101-layer) on a transparent object dataset.
+  Google’s
+  [cleargrasp](https://github.com/Shreeyak/cleargrasp/tree/master)
+  project required the creation of [transparent object
+  datasets](https://sites.google.com/view/transparent-objects). I will
+  train the network on these first, with the hopes that the backbone
+  will then be primed to extract features typical of transparent
+  objects.  
 - I will then freeze the backbone weights prior to training of the RPN
-layer, and the classification and bounding box regression heads. This
-model will undergo evaluation to answer the hypothesis.  
+  layer, and the classification and bounding box regression heads. This
+  model will undergo evaluation to answer the hypothesis.  
 
 Next: [Creating a custom dataset class…](01_Plate_Image_Dataset.qmd)

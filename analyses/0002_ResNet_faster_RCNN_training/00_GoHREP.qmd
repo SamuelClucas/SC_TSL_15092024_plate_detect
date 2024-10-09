@@ -20,7 +20,7 @@ Real-time object detection using the Faster R-CNN architecture has been robustly
 
 Further to this, based on reading of the [Universal Approximation Theorem](https://mitliagkas.github.io/ift6085-2020/ift-6085-lecture-10-notes.pdf), it is reasonable to posit that given sufficient, representative, and clear training data, the network should be abe to detect plates in images to at least some degree of accuracy. The question is whether or not this accuracy is high enough to be practically useful. \
 
-Experimental Plan: \
+### Experimental Plan: \
 - I will use PyTorch. Firstly, I need to write two custom dataset classes to handle storing and accessing images and their corresponding bounding box vertices for both the positives and negatives datasets (the latter to be used in [hard negatives mining](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123590120.pdf) to further optimise the model). \
 - Once instantiated, this class is passed to PyTorch's DataLoader for training or evaluation, as outlined in this [pytorch tutorial](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html). I would like to write a helper_training_functions src file to be imported in training scripts to keep the latter concise and readable. \
 - Training on the cluster requires that scripts don't need to download files at runtime. This will require a local Faster R-CNN class definition file. \
