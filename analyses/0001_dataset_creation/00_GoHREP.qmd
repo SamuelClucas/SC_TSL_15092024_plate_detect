@@ -19,4 +19,4 @@ Object detection using model architectures like the [Faster R-CNN](https://arxiv
 - Place the plates inside the incubator below the camera. \
 - Using [timelapser](https://github.com/SamuelClucas/SC_TSL_09092024_timelapser), start a timelapse to take images at an appropriate interval to allow for random movements of the plates in between image captures. The flash (the led ring) indicates when an image capture is taking place. Whilst on, close the incubator door. Whilst off (deduced roughly from the specified imaging frequency), open the door and randomly redistribute the plates inside the incubator. Repeat until satisfied - bearing in mind the IMX 298 camera module connected to the RPi captures images in 4K. These images are to undergo preprocessing prior to labelling. This will include subsetting each image into evenly sized crops with dimensions roughly equivalent to that of a single plate from the camera's POV. This means each image captured will ultimately result in n-images, where n = columns*rows of the crop. \
 
-Next: [01_image_collection.md](01_image_collection.md)
+Next: [Collecting images for the dataset...](01_image_collection.md)

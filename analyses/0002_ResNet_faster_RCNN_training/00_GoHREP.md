@@ -84,4 +84,4 @@ not this accuracy is high enough to be practically useful.
   layer, and the classification and bounding box regression heads. This
   model will undergo evaluation to answer the hypothesis.  
 
-Next: [Creating a custom dataset class…](01_Plate_Image_Dataset.qmd)
+Next: [Creating a custom dataset class…](01_Plate_Image_Dataset.md)

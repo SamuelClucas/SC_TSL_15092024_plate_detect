@@ -47,4 +47,4 @@ in the literature (see a recent review
   plate from the camera’s POV. This means each image captured will
   ultimately result in n-images, where n = columns\*rows of the crop.  
 
-Next: [01_image_collection.md](01_image_collection.md)
+Next: [Collecting images for the dataset…](01_image_collection.md)
