@@ -111,7 +111,7 @@ class Plate_Image_Dataset(Plate_Image_Dataset):
 ```
 
 **Breakdown:** \
-- I'm not particularly familiar with indexing pandas DataFrames. I used pythons [regular expression operations](https://docs.python.org/3/library/re.html) to extract digits ('\d') from the dataframe at a given index. Using isdigit() doesn't work (for example, iterating through '200' with isdigit() would return '2', '0', '0'). I struggled to use pandas 'loc' indexing attribute. I may return to this to do so. \
+- I'm not particularly familiar with indexing pandas DataFrames. I used pythons [regular expression operations](https://docs.python.org/3/library/re.html) to extract digits ('\\d') from the dataframe at a given index. Using isdigit() doesn't work (for example, iterating through '200' with isdigit() would return '2', '0', '0'). I struggled to use pandas 'loc' indexing attribute. I may return to this to do so. \
 - __getitem__ must return a tuple as specified in the tutorial. Here, img is of subclass of [tv.Tensor](https://pytorch.org/vision/master/tv_tensors.html) ([an image stored as a 3D matrix/tensor](https://discuss.pytorch.org/t/what-is-image-really/151290)). This tensor should be of shape [3, H, W], where 3 is the number of channels. Target is a dict with the following fields: \
     - "boxes": another [tv.Tensor](https://pytorch.org/vision/master/tv_tensors.html) subclass with shape [N, 4] where N is the number of bounding boxes associated with the image at the index being 'got'. Columns are x1, y1, x2, y2, where 0 <= x1 < x2 (same for y1 and y2). This is specified by 'format'. \
     - "labels": class labels (here 0 for background, 1 for 'plate') of type int64. \
