@@ -142,8 +142,8 @@ class Plate_Image_Dataset(Plate_Image_Dataset):
 - I’m not particularly familiar with indexing pandas DataFrames. I used
 pythons [regular expression
 operations](https://docs.python.org/3/library/re.html) to extract digits
-(‘) from the dataframe at a given index. Using isdigit() doesn’t work
-(for example, iterating through ’200’ with isdigit() would return ‘2’,
+(‘\d’) from the dataframe at a given index. Using isdigit() doesn’t work
+(for example, iterating through ‘200’ with isdigit() would return ‘2’,
 ‘0’, ‘0’). I struggled to use pandas ‘loc’ indexing attribute. I may
 return to this to do so.  
 - **getitem** must return a tuple as specified in the tutorial. Here,
