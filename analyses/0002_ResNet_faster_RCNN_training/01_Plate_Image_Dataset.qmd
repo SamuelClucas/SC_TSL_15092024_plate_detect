@@ -65,7 +65,7 @@ class Plate_Image_Dataset(Plate_Image_Dataset):
 ```
 - Just returns the number of image files in the dataset as an integer. \
 
-#### Definingn __getitem__...
+#### Defining __getitem__...
 ```{python}
 class Plate_Image_Dataset(Plate_Image_Dataset):
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, tv_tensors.Image]: 
@@ -111,14 +111,14 @@ class Plate_Image_Dataset(Plate_Image_Dataset):
 ```
 
 **Breakdown:** \
-- I'm not particularly familiar with indexing pandas DataFrames. I used pythons [regular expression operations](https://docs.python.org/3/library/re.html) to extract digits ('\d') from the dataframe at a given index. Using isdigit() doesn't work (for example, iterating through '200' with isdigit() would return '2', '0', '0'). I struggled to use pandas 'loc' indexing attribute. I may return to this to do so. 
-- __getitem__ must return a tuple as specified in the tutorial. Here, img is of subclass of [tv.Tensor](https://pytorch.org/vision/master/tv_tensors.html) ([an image stored as a 3D matrix/tensor](https://discuss.pytorch.org/t/what-is-image-really/151290)). This tensor should be of shape [3, H, W], where 3 is the number of channels. Target is a dict with the following fields:
-    - "boxes": another [tv.Tensor](https://pytorch.org/vision/master/tv_tensors.html) subclass with shape [N, 4] where N is the number of bounding boxes associated with the image at the index being 'got'. Columns are x1, y1, x2, y2, where 0 <= x1 < x2 (same for y1 and y2). This is specified by 'format'. 
-    - "labels": class labels (here 0 for background, 1 for 'plate') of type int64. 
-    - "image_id": image index in dataset of type int64.
-    - "area": float torch.Tensor of shape [N]. The area of the bounding box. This is used by coco_eval in [src/torchvision_deps](../../src/torchvision_deps/) to separate metric scores for small, medium and large boxes.
-    - "iscrowd": int64 torch.Tensor of shape [N]. Instances with iscrowd=True are ignored during evaluation. This doesn't really serve a purpose other than to prevent errors popping up when using the [torchvision_deps](../../src/torchvision_deps/). I plan to either extricate it from the dependencies so that it can be removed from the dataset class. For now, it is always initialised as a tensor of zeros using [torch.zeros](https://pytorch.org/docs/stable/generated/torch.zeros.html).
-- wrapping image tensors and bounding boxes in TVTensor subclasses allows for application of torchvision [built-in transformations](https://pytorch.org/vision/stable/transforms.html). Based on the TVTensor subclass wrapping the object, the tranforms dispatch the object to the appropriate implementation (as described [here](https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_getting_started.html#what-are-tvtensors)).
-- in the tutorial, img and target are passed to trainsforms together and returned as a tuple. For some reason, I could not get it to work this way. I suspect it is something to do with the types of the fields of target not all being TVTensors. Regardless, I pass boxes and img to transforms separately, then return them from __getitem__ as a tuple. Hopefully this isn't behaving unexpectedly in the torchvision deps - unit tests necessary to confirm this.
-
+- I'm not particularly familiar with indexing pandas DataFrames. I used pythons [regular expression operations](https://docs.python.org/3/library/re.html) to extract digits ('\d') from the dataframe at a given index. Using isdigit() doesn't work (for example, iterating through '200' with isdigit() would return '2', '0', '0'). I struggled to use pandas 'loc' indexing attribute. I may return to this to do so. \
+- __getitem__ must return a tuple as specified in the tutorial. Here, img is of subclass of [tv.Tensor](https://pytorch.org/vision/master/tv_tensors.html) ([an image stored as a 3D matrix/tensor](https://discuss.pytorch.org/t/what-is-image-really/151290)). This tensor should be of shape [3, H, W], where 3 is the number of channels. Target is a dict with the following fields: \
+    - "boxes": another [tv.Tensor](https://pytorch.org/vision/master/tv_tensors.html) subclass with shape [N, 4] where N is the number of bounding boxes associated with the image at the index being 'got'. Columns are x1, y1, x2, y2, where 0 <= x1 < x2 (same for y1 and y2). This is specified by 'format'. \
+    - "labels": class labels (here 0 for background, 1 for 'plate') of type int64. \
+    - "image_id": image index in dataset of type int64. \
+    - "area": float torch.Tensor of shape [N]. The area of the bounding box. This is used by coco_eval in [src/torchvision_deps](../../src/torchvision_deps/) to separate metric scores for small, medium and large boxes. \
+    - "iscrowd": int64 torch.Tensor of shape [N]. Instances with iscrowd=True are ignored during evaluation. This doesn't really serve a purpose other than to prevent errors popping up when using the [torchvision_deps](../../src/torchvision_deps/). I plan to either extricate it from the dependencies so that it can be removed from the dataset class. For now, it is always initialised as a tensor of zeros using [torch.zeros](https://pytorch.org/docs/stable/generated/torch.zeros.html). \
+- wrapping image tensors and bounding boxes in TVTensor subclasses allows for application of torchvision [built-in transformations](https://pytorch.org/vision/stable/transforms.html). Based on the TVTensor subclass wrapping the object, the tranforms dispatch the object to the appropriate implementation (as described [here](https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_getting_started.html#what-are-tvtensors)). \
+- in the tutorial, img and target are passed to trainsforms together and returned as a tuple. For some reason, I could not get it to work this way. I suspect it is something to do with the types of the fields of target not all being TVTensors. Regardless, I pass boxes and img to transforms separately, then return them from __getitem__ as a tuple. Hopefully this isn't behaving unexpectedly in the torchvision deps - unit tests necessary to confirm this. \
+ 
 ### Next step: [creating helper functions module for import into training/evaluation scripts...](02_helper_training_functions.md)
