@@ -1,24 +1,11 @@
 ---
-title: "helper_training_functions.py"
+title: "Helper Training Function"
 date: 20-09-2024
 date-format: short
 ---
 
 ### Purpose: \
-I created numerous helpful utility functions for this project. This document serves to explain each one. \
-
-[This](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html) Pytorch tutorial was useful. As per the tutorial, I downloaded several helper functions available on Pytorch vision's github. I had trouble importing src/torchvision_deps as in scripts/ so execute the following code block: \
-```{python}
-#| eval: false
-import os
-os.system("mkdir torchvision_deps")
-os.system("wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/engine.py -P torchvision_deps")
-os.system("wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/utils.py -P torchvision_deps")
-os.system("wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/coco_utils.py -P torchvision_deps")
-os.system("wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/coco_eval.py -P torchvision_deps")
-os.system("wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/transforms.py -P torchvision_deps")
-os.system("touch torchvision_deps/__init__.py")
-```
+I created numerous helper functions for import into training/evaluation scripts. This document serves to explain each one. \
 
 ### Programme Overview:
 
@@ -34,12 +21,10 @@ import torch
 from torchvision.transforms.v2 import functional as F
 from torchvision import tv_tensors
 import matplotlib.pyplot as plt
-from typing import Dict
 from pathlib import Path
 from typing import Dict, Union
 from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2, FastRCNNPredictor, FasterRCNN_ResNet50_FPN_V2_Weights
-import utils as utils
-from engine import train_one_epoch, evaluate 
+import torchvision_deps.T_and_utils.utils as utils 
 import PIL
 from torchvision.utils import draw_bounding_boxes
 import torchvision
@@ -64,13 +49,11 @@ def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_f
 ```
 
 **Breakdown:** \
-- this approach requires permissions to download the model file from the internet (through 'torch.utils.model_zoo.load_url()'). For this reason, it is not amenable to training on the cluster. See the following code block for its successor. \
+- this approach requires permissions to download the model file from the internet (through 'torch.utils.model_zoo.load_url()'). For this reason, it is not amenable to training on the cluster. This will be addressed in analysis 0003, using a local Faster R-CNN with ResNet backbone class definition. Otherwise, this function still works. \
+- See pytorch's documentation on [ResNet50 faster R-CNN backbone]](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html).
 
 
-- See pytorch's documentation on [ResNet50 faster R-CNN backbone]](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html) - (where by 'backbone' I mean the convolutional layer/module used to extract features for the succeeding Region Proposal Network and classification/bounding box regression heads). The documentation states that it is based on the "[Faster R-CNN: Towards Real-Time Object Detection with Region Proposal Networks](https://arxiv.org/abs/1506.01497)" paper, which is reassuring. \
-- the model behaves differently depending on its mode (evaluation or training). In training mode, the model expects input tensors (images) and targets (list of dictionary containing bounding boxes [N, 4], with vertices in the format [x1, y1, x2, y2] and class labels in the format Int64Tensor[N] where N is the number of bounding boxes in a given image, or the number of distinct classes, respectively). \
-
-#### Main:
+#### Save function
 ```{python}
 def save_checkpoint(model, optimizer, epoch, save_dir):
     if not os.path.exists(save_dir):
@@ -87,40 +70,10 @@ def save_checkpoint(model, optimizer, epoch, save_dir):
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved: {save_path}")
 ```
-
 **Breakdown:** \
 - stepwise breakdown \
 
-#### Main:
-```{python}
-
-```
-
-**Breakdown:** \
-- stepwise breakdown \
-
-#### Main:
-```{python}
-def save_checkpoint(model, optimizer, epoch, save_dir):
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
-    
-    checkpoint = {
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-    }
-    
-    filename = f'checkpoint_epoch_{epoch}.pth'
-    save_path = os.path.join(save_dir, filename)
-    torch.save(checkpoint, save_path)
-    print(f"Checkpoint saved: {save_path}")
-```
-
-**Breakdown:** \
-- stepwise breakdown \
-
-#### Main:
+#### Training function:
 ```{python}
 def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch):
     save_dir = './checkpoints/' 
@@ -171,24 +124,22 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
 **Breakdown:** \
 - stepwise breakdown \
 
-#### Main:
+#### Load a model from a .pth file:
 ```{python}
-def load_model(save_dir):
-    model, preprocess = get_model_instance_bounding_boxes(2)
-    checkpoint = torch.load(save_dir + '/checkpoint_epoch_0.pth', weights_only=True)
+def load_model(save_dir: str, num_classes: int):
+    model, preprocess = get_model_instance_bounding_boxes(num_classes)
+    checkpoint = torch.load(save_dir + 'path/to/model.pth', weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
     #optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     #epoch = checkpoint['epoch']
     return model
-
 ```
-
 **Breakdown:** \
-- stepwise breakdown \
+- the model behaves differently depending on its mode (evaluation or training). In training mode, the model expects input tensors (images) and targets (list of dictionary containing bounding boxes [N, 4], with vertices in the format [x1, y1, x2, y2] and class labels in the format Int64Tensor[N] where N is the number of bounding boxes in a given image, or the number of distinct classes, respectively). \
 
-#### Main:
+#### Evaluate a model's performance after training:
 ```{python}
-def evaluate_model(model, data_loader_test,device):
+def evaluate_model(model, data_loader_test: torch.utils.data.DataLoader, device: torch.cuda.device): 
     val_metrics = []
     model.eval()
 
@@ -199,32 +150,80 @@ def evaluate_model(model, data_loader_test,device):
     val_metrics.append(eval_stats)
     return val_metrics
 ```
-
 **Breakdown:** \
-- stepwise breakdown \
-
-#### Main:
+- currently using [coco_eval](../../src/torchvision_deps/) \
+- see device class docs [here](https://pytorch.org/docs/stable/generated/torch.cuda.device.html) \
+- makes a call to [engine's](../../src/torchvision_deps/engine.py) evaluator(), shown below: \
 ```{python}
-def get_feature_maps(model, input_image):
-    feature_maps = {}
+@torch.inference_mode()
+def evaluate(model, data_loader, device):
+    n_threads = torch.get_num_threads()
+    # FIXME remove this and make paste_masks_in_image run on the GPU
+    torch.set_num_threads(1)
+    cpu_device = torch.device("cpu")
+    model.eval()
+    metric_logger = utils.MetricLogger(delimiter="  ") # MetricLogger: https://pytorch.org/tnt/stable/utils/generated/torchtnt.utils.loggers.MetricLogger.html
+    header = "Test:"
+
+    coco = get_coco_api_from_dataset(data_loader.dataset)
+    iou_types = _get_iou_types(model)
+    coco_evaluator = CocoEvaluator(coco, iou_types)
+
+    for images, targets in metric_logger.log_every(data_loader, 100, header):
+        images = list(img.to(device) for img in images)
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        model_time = time.time()
+        outputs = model(images)
+
+        outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+        model_time = time.time() - model_time
+
+        res = {target["image_id"]: output for target, output in zip(targets, outputs)}
+        evaluator_time = time.time()
+        coco_evaluator.update(res)
+        evaluator_time = time.time() - evaluator_time
+        metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
+
+    # gather the stats from all processes
+    metric_logger.synchronize_between_processes()
+    print("Averaged stats:", metric_logger)
+    coco_evaluator.synchronize_between_processes()
+
+    # accumulate predictions from all images
+    coco_evaluator.accumulate()
+    coco_evaluator.summarize()
+    torch.set_num_threads(n_threads)
+    return coco_evaluator
+```
+- COCO provides thorough documentation [here](https://cocodataset.org/#detection-eval).
+- coco_evaluator.summarize() computes Average Precision (AP), AP Across Scales, Average Recall (AR), AR Across Scales (see a dicussion of these metrics [here](https://blog.zenggyu.com/posts/en/2018-12-16-an-introduction-to-evaluation-metrics-for-object-detection/index.html)).
+
+#### Using PyTorch hooks to get backbone feature maps:
+```{python}
+def get_feature_maps(model, input_image, target_layer_name: torch.nn):
+    feature_maps = {} # stores activations passed to forward_hook
     
     def hook_fn(module, input, output):
-        feature_maps[module] = output
+        feature_maps[module] = output.detach()
+    return hook_fn # calls handle.remove() to remove the added hook
     
     # Register hooks for the layers to be visualised
     for name, module in model.backbone.named_modules():
-        if isinstance(module, nn.Conv2d):
-            module.register_forward_hook(hook_fn)
+        if isinstance(module, target_layer_name): # type examples: nn.Conv2d, nn.BatchNorm2d, nn.ReLU
+            module.register_forward_hook(hook_fn(module))
     
     # Forward pass
-    with torch.no_grad():
+    with torch.no_grad(): # disables loss gradient calculation: https://discuss.pytorch.org/t/with-torch-no-grad/130146
         model([input_image])
     
     return feature_maps
 ```
-
 **Breakdown:** \
-- stepwise breakdown \
+- in order to extract intermediate activations from model layers, PyTorch provides 'hooks'. [Pytorch documentation on hooks](https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.register_forward_hook) is quite sparse, but [this](https://web.stanford.edu/~nanbhas/blog/forward-hooks-pytorch/) blog is quite useful. \
+- gets the feature maps for every target layer (target_layer_name) in each named module in the model's backbone (e.g., 'Sequential', 'Bottleneck'). Target layers are documented [here](https://pytorch.org/docs/stable/nn.html#convolution-layers). \
+
 
 #### Main:
 ```{python}
