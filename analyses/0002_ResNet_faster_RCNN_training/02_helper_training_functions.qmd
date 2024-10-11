@@ -52,8 +52,7 @@ def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_f
 - this approach requires permissions to download the model file from the internet (through 'torch.utils.model_zoo.load_url()'). For this reason, it is not amenable to training on the cluster. This will be addressed in analysis 0003, using a local Faster R-CNN with ResNet backbone class definition. Otherwise, this function still works. \
 - See pytorch's documentation on [ResNet50 faster R-CNN backbone](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html).
 
-
-#### Save function
+#### Save epoch, model and optimizer state_dict in checkpoint dict:
 ```{python}
 def save_checkpoint(model, optimizer, epoch, save_dir):
     if not os.path.exists(save_dir):

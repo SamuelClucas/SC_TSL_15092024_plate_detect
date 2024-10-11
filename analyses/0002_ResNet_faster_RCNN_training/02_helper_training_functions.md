@@ -59,7 +59,7 @@ definition. Otherwise, this function still works.
 - See pytorch’s documentation on [ResNet50 faster R-CNN
 backbone](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html).
 
-#### Save function
+#### Save epoch, model and optimizer state_dict in checkpoint dict:
 
 ``` python
 def save_checkpoint(model, optimizer, epoch, save_dir):
