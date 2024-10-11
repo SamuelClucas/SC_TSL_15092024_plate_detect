@@ -56,8 +56,8 @@ internet (through ‘torch.utils.model_zoo.load_url()’). For this reason,
 it is not amenable to training on the cluster. This will be addressed in
 analysis 0003, using a local Faster R-CNN with ResNet backbone class
 definition. Otherwise, this function still works.  
-- See pytorch’s documentation on \[ResNet50 faster R-CNN
-backbone\]\](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html).
+- See pytorch’s documentation on [ResNet50 faster R-CNN
+backbone](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html).
 
 #### Save function
 
@@ -188,18 +188,19 @@ def load_model(save_dir: str, num_classes: int, model_file_name: str):
     model, preprocess = get_model_instance_bounding_boxes(num_classes)
     checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
-    #optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    #epoch = checkpoint['epoch']
-    return model
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    return model, optimizer, epoch
 ```
 
 **Breakdown:**  
-- the model behaves differently depending on its mode (evaluation or
-training). In training mode, the model expects input tensors (images)
-and targets (list of dictionary containing bounding boxes \[N, 4\], with
-vertices in the format \[x1, y1, x2, y2\] and class labels in the format
-Int64Tensor\[N\] where N is the number of bounding boxes in a given
-image, or the number of distinct classes, respectively).  
+- Loads a model from a .pth file. See the pytorch documentation
+[here](https://pytorch.org/tutorials/beginner/saving_loading_models.html).  
+- The weights and biases of a model are accessed by model.parameters().
+A state_dict is a dictionary object that maps each layer to its
+parameter tensor. Both the model and optimiser have state_dicts, and
+both are saved by the save_checkpoint helper function.  
+- Returns the model, optimizer and epoch.  
 
 #### Evaluate a model’s performance after training:
 
@@ -218,11 +219,16 @@ def evaluate_model(model, data_loader_test: torch.utils.data.DataLoader, device:
 
 **Breakdown:**  
 - Sets the model to evaluation mode using model.eval(), which alters the
-behavior of certain layers. - currently using
-[coco_eval](../../src/torchvision_deps/)  
-- see device class docs
+behavior of certain layers.  
+- In training mode, the model expects input tensors (images) and targets
+(list of dictionary containing bounding boxes \[N, 4\], with vertices in
+the format \[x1, y1, x2, y2\] and class labels in the format
+Int64Tensor\[N\] where N is the number of bounding boxes in a given
+image, or the number of distinct classes, respectively).  
+- Currently using [coco_eval](../../src/torchvision_deps/).  
+- See device class docs
 [here](https://pytorch.org/docs/stable/generated/torch.cuda.device.html)  
-- makes a call to [engine’s](../../src/torchvision_deps/engine.py)
+- Makes a call to [engine’s](../../src/torchvision_deps/engine.py)
 evaluator() to perform COCO-style evaluation on the test dataset, shown
 below:  
 
@@ -300,13 +306,13 @@ def get_feature_maps(model, input_image, target_layer_name: torch.nn):
 ```
 
 **Breakdown:**  
-- in order to extract intermediate activations from model layers,
+- In order to extract intermediate activations from model layers,
 PyTorch provides ‘hooks’. [Pytorch documentation on
 hooks](https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.register_forward_hook)
 is quite sparse, but
 [this](https://web.stanford.edu/~nanbhas/blog/forward-hooks-pytorch/)
 blog is quite useful.  
-- gets the feature maps for every target layer (target_layer_name) in
+- Gets the feature maps for every target layer (target_layer_name) in
 each named module in the model’s backbone (e.g., ‘Sequential’,
 ‘Bottleneck’). Target layers are documented
 [here](https://pytorch.org/docs/stable/nn.html#convolution-layers).  
@@ -336,11 +342,11 @@ def visualize_feature_maps(feature_maps, num_features=64):
 
 **Breakdown:**  
 - This function takes the feature maps collected from the
-get_feature_maps function and visualizes them. - It plots up to
-num_features from each layer’s output, providing visual insights into
-what features the model is learning at different levels.
+get_feature_maps function and visualizes them.  
+- It plots up to num_features from each layer’s output, providing visual
+insights into what features the model is learning at different levels.
 
-#### Display bounding boxes superimposed on image:
+#### Superimpose and plot bounding boxes on image:
 
 ``` python
 def plot_prediction(model, dataset, device, save_dir: str):
@@ -417,8 +423,8 @@ def plot_eval_metrics(eval_metrics, epoch):
 
 **Breakdown:**  
 - This function visualizes the evaluation metrics (mean Average
-Precision (mAP) and mean Average Recall (mAR)) over epochs. - The
-results are plotted for easy comparison, helping to analyze the training
-process and the model’s learning behavior over time.
+Precision (mAP) and mean Average Recall (mAR)) over epochs.  
+- The results are plotted for easy comparison, helping to analyze the
+training process and the model’s learning behavior over time.  
 
 ### Next step: [implementing these functions in a setup script…](03_ResNet50_setup.md)
