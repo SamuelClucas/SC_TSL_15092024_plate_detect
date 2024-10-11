@@ -1,4 +1,4 @@
-# Helper Training Function
+# Helper Training Functions
 
 8/9/25
 

@@ -1,5 +1,5 @@
 ---
-title: "Helper Training Function"
+title: "Helper Training Functions"
 date: 20-09-2024
 date-format: short
 ---
