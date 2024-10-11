@@ -1,16 +1,17 @@
----
-title: "Helper Training Function"
-date: 20-09-2024
-date-format: short
----
+# Helper Training Function
 
-### Purpose: \
-I created numerous helper functions for import into training/evaluation scripts. This document serves to explain each one. \
+8/9/25
+
+### Purpose: 
+
+I created numerous helper functions for import into training/evaluation
+scripts. This document serves to explain each one.  
 
 ### Programme Overview:
 
 #### Imports:
-```{python}
+
+``` python
 from torchvision_deps.engine import train_one_epoch, evaluate 
 import re
 from glob import glob
@@ -33,8 +34,9 @@ from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 ```
 
-#### Get Faster R-CNN model instance for object detection...
-```{python}
+#### Get Faster R-CNN model instance for object detection…
+
+``` python
 def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_fpn_v2:
     # New weights with accuracy 80.858%
     weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT # alias is .DEFAULT suffix, weights = None is random initialisation, box MAP 46.7, params, 43.7M, GFLOPS 280.37 https://github.com/pytorch/vision/pull/5763
@@ -48,13 +50,18 @@ def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_f
     return model, preprocess
 ```
 
-**Breakdown:** \
-- this approach requires permissions to download the model file from the internet (through 'torch.utils.model_zoo.load_url()'). For this reason, it is not amenable to training on the cluster. This will be addressed in analysis 0003, using a local Faster R-CNN with ResNet backbone class definition. Otherwise, this function still works. \
-- See pytorch's documentation on [ResNet50 faster R-CNN backbone]](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html).
-
+**Breakdown:**  
+- this approach requires permissions to download the model file from the
+internet (through ‘torch.utils.model_zoo.load_url()’). For this reason,
+it is not amenable to training on the cluster. This will be addressed in
+analysis 0003, using a local Faster R-CNN with ResNet backbone class
+definition. Otherwise, this function still works.  
+- See pytorch’s documentation on \[ResNet50 faster R-CNN
+backbone\]\](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html).
 
 #### Save function
-```{python}
+
+``` python
 def save_checkpoint(model, optimizer, epoch, save_dir):
     if not os.path.exists(save_dir):
         os.makedirs(save_dir)
@@ -70,13 +77,17 @@ def save_checkpoint(model, optimizer, epoch, save_dir):
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved: {save_path}")
 ```
-**Breakdown:** \
-- Creates a directory if it doesn't exist to store the checkpoints. \
-- Saves the current epoch number, model parameters (weights), and optimizer state to a dictionary. \
-- This allows for resuming training from a specific epoch in case of interruptions. \
+
+**Breakdown:**  
+- Creates a directory if it doesn’t exist to store the checkpoints.  
+- Saves the current epoch number, model parameters (weights), and
+optimizer state to a dictionary.  
+- This allows for resuming training from a specific epoch in case of
+interruptions.  
 
 #### Training function:
-```{python}
+
+``` python
 def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir): 
     model.train()
 
@@ -117,41 +128,62 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
     return epoch + precedent_epoch, train_losses
 ```
 
-**Breakdown:** \
-Setting the Model to Training Mode: \
-- model.train() sets the model to training mode. This is crucial because certain layers (like dropout and batch normalization) behave differently during training versus evaluation. \
+**Breakdown:**  
+Setting the Model to Training Mode:  
+- model.train() sets the model to training mode. This is crucial because
+certain layers (like dropout and batch normalization) behave differently
+during training versus evaluation.  
 
-Optimizer Construction: \
-- The optimizer is created using Stochastic Gradient Descent (SGD) with a learning rate of 0.005, momentum of 0.9, and weight decay for regularization (also known as [L2 regularisation](https://arxiv.org/pdf/2310.04415)). \
-- params filters the model's parameters to include only those that require gradients (trainable parameters). \
+Optimizer Construction:  
+- The optimizer is created using Stochastic Gradient Descent (SGD) with
+a learning rate of 0.005, momentum of 0.9, and weight decay for
+regularization (also known as [L2
+regularisation](https://arxiv.org/pdf/2310.04415)).  
+- params filters the model’s parameters to include only those that
+require gradients (trainable parameters).  
 
-Learning Rate Scheduler: \
-- A learning rate scheduler (StepLR) is initialized, which reduces the learning rate by a factor of gamma (0.1) every step_size epochs (3 epochs in this case). This helps improve convergence as training progresses. \
+Learning Rate Scheduler:  
+- A learning rate scheduler (StepLR) is initialized, which reduces the
+learning rate by a factor of gamma (0.1) every step_size epochs (3
+epochs in this case). This helps improve convergence as training
+progresses.  
 
-Epoch Loop: \
-- The outer loop iterates over the number of specified epochs (num_epochs). \
+Epoch Loop:  
+- The outer loop iterates over the number of specified epochs
+(num_epochs).  
 
-Training for One Epoch: \
-- train_one_epoch(...) is a function from [engine.py](../../src/torchvision_deps/engine.py) that handles the training logic for one epoch. It processes batches from the data_loader, computes losses, and updates model weights. \
-- The print_freq parameter controls how often training progress is printed (every 10 iterations). \
+Training for One Epoch:  
+- train_one_epoch(…) is a function from
+[engine.py](../../src/torchvision_deps/engine.py) that handles the
+training logic for one epoch. It processes batches from the data_loader,
+computes losses, and updates model weights.  
+- The print_freq parameter controls how often training progress is
+printed (every 10 iterations).  
 
-Logging Loss: \
-- The average loss for the epoch is extracted from metric_logger, which tracks various metrics during training. \
+Logging Loss:  
+- The average loss for the epoch is extracted from metric_logger, which
+tracks various metrics during training.  
 
-Checkpoint Saving: \
-- After each epoch, a checkpoint is saved using the save_checkpoint function. This allows for resuming from the last epoch in case of interruption. \
+Checkpoint Saving:  
+- After each epoch, a checkpoint is saved using the save_checkpoint
+function. This allows for resuming from the last epoch in case of
+interruption.  
 
-Metrics Plotting: \
-- The function plot_eval_metrics is called to visualize training losses over epochs. \
+Metrics Plotting:  
+- The function plot_eval_metrics is called to visualize training losses
+over epochs.  
 
-Learning Rate Update: \
-- After the epoch, the learning rate is updated according to the scheduler. \
+Learning Rate Update:  
+- After the epoch, the learning rate is updated according to the
+scheduler.  
 
-Return Values: \
-- The function returns the final epoch number (adjusted for any precedent epochs) and the list of training losses. \
+Return Values:  
+- The function returns the final epoch number (adjusted for any
+precedent epochs) and the list of training losses.  
 
 #### Load a model from a .pth file:
-```{python}
+
+``` python
 def load_model(save_dir: str, num_classes: int, model_file_name: str):
     model, preprocess = get_model_instance_bounding_boxes(num_classes)
     checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
@@ -160,11 +192,18 @@ def load_model(save_dir: str, num_classes: int, model_file_name: str):
     #epoch = checkpoint['epoch']
     return model
 ```
-**Breakdown:** \
-- the model behaves differently depending on its mode (evaluation or training). In training mode, the model expects input tensors (images) and targets (list of dictionary containing bounding boxes [N, 4], with vertices in the format [x1, y1, x2, y2] and class labels in the format Int64Tensor[N] where N is the number of bounding boxes in a given image, or the number of distinct classes, respectively). \
 
-#### Evaluate a model's performance after training:
-```{python}
+**Breakdown:**  
+- the model behaves differently depending on its mode (evaluation or
+training). In training mode, the model expects input tensors (images)
+and targets (list of dictionary containing bounding boxes \[N, 4\], with
+vertices in the format \[x1, y1, x2, y2\] and class labels in the format
+Int64Tensor\[N\] where N is the number of bounding boxes in a given
+image, or the number of distinct classes, respectively).  
+
+#### Evaluate a model’s performance after training:
+
+``` python
 def evaluate_model(model, data_loader_test: torch.utils.data.DataLoader, device: torch.cuda.device): 
     val_metrics = []
     model.eval()
@@ -176,12 +215,18 @@ def evaluate_model(model, data_loader_test: torch.utils.data.DataLoader, device:
     val_metrics.append(eval_stats)
     return val_metrics
 ```
-**Breakdown:** \
-- Sets the model to evaluation mode using model.eval(), which alters the behavior of certain layers.
-- currently using [coco_eval](../../src/torchvision_deps/) \
-- see device class docs [here](https://pytorch.org/docs/stable/generated/torch.cuda.device.html) \
-- makes a call to [engine's](../../src/torchvision_deps/engine.py) evaluator() to perform COCO-style evaluation on the test dataset, shown below: \
-```{python}
+
+**Breakdown:**  
+- Sets the model to evaluation mode using model.eval(), which alters the
+behavior of certain layers. - currently using
+[coco_eval](../../src/torchvision_deps/)  
+- see device class docs
+[here](https://pytorch.org/docs/stable/generated/torch.cuda.device.html)  
+- makes a call to [engine’s](../../src/torchvision_deps/engine.py)
+evaluator() to perform COCO-style evaluation on the test dataset, shown
+below:  
+
+``` python
 @torch.inference_mode()
 def evaluate(model, data_loader, device):
     n_threads = torch.get_num_threads()
@@ -224,11 +269,17 @@ def evaluate(model, data_loader, device):
     torch.set_num_threads(n_threads)
     return coco_evaluator
 ```
-- COCO provides thorough documentation [here](https://cocodataset.org/#detection-eval).
-- coco_evaluator.summarize() computes Average Precision (AP), AP Across Scales, Average Recall (AR), AR Across Scales (see a dicussion of these metrics [here](https://blog.zenggyu.com/posts/en/2018-12-16-an-introduction-to-evaluation-metrics-for-object-detection/index.html)).
+
+- COCO provides thorough documentation
+  [here](https://cocodataset.org/#detection-eval).
+- coco_evaluator.summarize() computes Average Precision (AP), AP Across
+  Scales, Average Recall (AR), AR Across Scales (see a dicussion of
+  these metrics
+  [here](https://blog.zenggyu.com/posts/en/2018-12-16-an-introduction-to-evaluation-metrics-for-object-detection/index.html)).
 
 #### Using PyTorch hooks to get backbone feature maps:
-```{python}
+
+``` python
 def get_feature_maps(model, input_image, target_layer_name: torch.nn):
     feature_maps = {} # stores activations passed to forward_hook
     
@@ -247,13 +298,22 @@ def get_feature_maps(model, input_image, target_layer_name: torch.nn):
     
     return feature_maps
 ```
-**Breakdown:** \
-- in order to extract intermediate activations from model layers, PyTorch provides 'hooks'. [Pytorch documentation on hooks](https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.register_forward_hook) is quite sparse, but [this](https://web.stanford.edu/~nanbhas/blog/forward-hooks-pytorch/) blog is quite useful. \
-- gets the feature maps for every target layer (target_layer_name) in each named module in the model's backbone (e.g., 'Sequential', 'Bottleneck'). Target layers are documented [here](https://pytorch.org/docs/stable/nn.html#convolution-layers). \
 
+**Breakdown:**  
+- in order to extract intermediate activations from model layers,
+PyTorch provides ‘hooks’. [Pytorch documentation on
+hooks](https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.register_forward_hook)
+is quite sparse, but
+[this](https://web.stanford.edu/~nanbhas/blog/forward-hooks-pytorch/)
+blog is quite useful.  
+- gets the feature maps for every target layer (target_layer_name) in
+each named module in the model’s backbone (e.g., ‘Sequential’,
+‘Bottleneck’). Target layers are documented
+[here](https://pytorch.org/docs/stable/nn.html#convolution-layers).  
 
 #### Main:
-```{python}
+
+``` python
 def visualize_feature_maps(feature_maps, num_features=64):
     for layer, feature_map in feature_maps.items():
         # Get the first image in the batch
@@ -274,12 +334,15 @@ def visualize_feature_maps(feature_maps, num_features=64):
         plt.show()
 ```
 
-**Breakdown:** \
-- This function takes the feature maps collected from the get_feature_maps function and visualizes them.
-- It plots up to num_features from each layer’s output, providing visual insights into what features the model is learning at different levels.
+**Breakdown:**  
+- This function takes the feature maps collected from the
+get_feature_maps function and visualizes them. - It plots up to
+num_features from each layer’s output, providing visual insights into
+what features the model is learning at different levels.
 
 #### Display bounding boxes superimposed on image:
-```{python}
+
+``` python
 def plot_prediction(model, dataset, device, save_dir: str):
     img, target = dataset[6]
     num_epochs = 1
@@ -299,12 +362,16 @@ def plot_prediction(model, dataset, device, save_dir: str):
     plt.imshow(output_image.permute(1, 2, 0))
     plt.show()
 ```
-**Breakdown:** \
-- Loads a specific image from the dataset and runs it through the model to get predictions.\
-- Superimposes the predicted bounding boxes on the original image (as a red outlined bounding box) and visualises the result. \
+
+**Breakdown:**  
+- Loads a specific image from the dataset and runs it through the model
+to get predictions.  
+- Superimposes the predicted bounding boxes on the original image (as a
+red outlined bounding box) and visualises the result.  
 
 #### Main:
-```{python}
+
+``` python
 def plot_eval_metrics(eval_metrics, epoch):
     plt.figure(figsize=(15, 10))
     
@@ -346,10 +413,12 @@ def plot_eval_metrics(eval_metrics, epoch):
     plt.tight_layout()
     plt.savefig(f'training_metrics_epoch_{epoch}.png')
     plt.close()
-
 ```
-**Breakdown:** \
-- This function visualizes the evaluation metrics (mean Average Precision (mAP) and mean Average Recall (mAR)) over epochs.
-- The results are plotted for easy comparison, helping to analyze the training process and the model's learning behavior over time.
 
-### Next step: [implementing these functions in a setup script...](03_ResNet50_setup.md)
+**Breakdown:**  
+- This function visualizes the evaluation metrics (mean Average
+Precision (mAP) and mean Average Recall (mAR)) over epochs. - The
+results are plotted for easy comparison, helping to analyze the training
+process and the model’s learning behavior over time.
+
+### Next step: [implementing these functions in a setup script…](03_ResNet50_setup.md)
