@@ -254,7 +254,7 @@ def get_feature_maps(model, input_image, target_layer_name: torch.nn):
 - Gets the feature maps for every target layer (target_layer_name) in each named module in the model's backbone (e.g., 'Sequential', 'Bottleneck'). Target layers are documented [here](https://pytorch.org/docs/stable/nn.html#convolution-layers). \
 
 
-#### Main:
+#### Plot feature maps:
 ```{python}
 def visualize_feature_maps(feature_maps, num_features=64):
     for layer, feature_map in feature_maps.items():
@@ -305,7 +305,7 @@ def plot_prediction(model, dataset, device, save_dir: str):
 - Loads a specific image from the dataset and runs it through the model to get predictions.\
 - Superimposes the predicted bounding boxes on the original image (as a red outlined bounding box) and visualises the result. \
 
-#### Main:
+#### Plot evaluation metrics:
 ```{python}
 def plot_eval_metrics(eval_metrics, epoch):
     plt.figure(figsize=(15, 10))

@@ -317,7 +317,7 @@ each named module in the model’s backbone (e.g., ‘Sequential’,
 ‘Bottleneck’). Target layers are documented
 [here](https://pytorch.org/docs/stable/nn.html#convolution-layers).  
 
-#### Main:
+#### Plot feature maps:
 
 ``` python
 def visualize_feature_maps(feature_maps, num_features=64):
@@ -375,7 +375,7 @@ to get predictions.
 - Superimposes the predicted bounding boxes on the original image (as a
 red outlined bounding box) and visualises the result.  
 
-#### Main:
+#### Plot evaluation metrics:
 
 ``` python
 def plot_eval_metrics(eval_metrics, epoch):
