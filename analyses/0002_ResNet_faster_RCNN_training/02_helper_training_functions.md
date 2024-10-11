@@ -109,23 +109,25 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
         gamma=0.1
     )
 
+    for epoch in range(num_epochs):
     # train for one epoch, printing every 10 iterations
-    metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
     
     # Get the average loss for this epoch
-    epoch_loss = metric_logger.meters['loss'].global_avg
-    train_losses.append(epoch_loss)
+        epoch_loss = metric_logger.meters['loss'].global_avg
+        train_losses.append(epoch_loss)
 
-    # Save checkpoint
-    save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
         
-    # Plot and save the metrics
-    plot_eval_metrics(train_losses, epoch + precedent_epoch)
         
-    # Update the learning rate
-    lr_scheduler.step()
+        # Plot and save the metrics
+        plot_eval_metrics(train_losses, epoch + precedent_epoch)
+        
+        # Update the learning rate
+        lr_scheduler.step()
 
-    return epoch + precedent_epoch, train_losses
+    return num_epochs + precedent_epoch, train_losses
 ```
 
 **Breakdown:**  
@@ -349,8 +351,8 @@ insights into what features the model is learning at different levels.
 #### Superimpose and plot bounding boxes on image:
 
 ``` python
-def plot_prediction(model, dataset, device, save_dir: str):
-    img, target = dataset[6]
+def plot_prediction(model, dataset, device, index, save_dir: str):
+    img, target = dataset[index]
     num_epochs = 1
     print_freq = 10  
 
@@ -366,7 +368,7 @@ def plot_prediction(model, dataset, device, save_dir: str):
     output_image = draw_bounding_boxes(image, pred_boxes, colors="red")
     plt.figure(figsize=(12, 12))
     plt.imshow(output_image.permute(1, 2, 0))
-    plt.show()
+    plt.savefig(f'{index}.png', bbox_inches='tight') # tight removes whitespace
 ```
 
 **Breakdown:**  
