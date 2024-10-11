@@ -68,8 +68,9 @@ if __name__ == '__main__':
 
     num_epochs = 10
     precedent_epoch = 0
+    save_dir = 'results'
 
-    epoch, loss_metrics = helper_training_functions.train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch)
+    epoch, loss_metrics = helper_training_functions.train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
 
     eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test,device)
 

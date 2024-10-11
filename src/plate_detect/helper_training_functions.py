@@ -53,8 +53,7 @@ def save_checkpoint(model, optimizer, epoch, save_dir):
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved: {save_path}")
 
-def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch):
-    save_dir = './checkpoints/' 
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir): 
     model.train()
 
     # Initialize lists to store metrics
@@ -74,11 +73,8 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
         step_size=3,
         gamma=0.1
     )
-    for epoch in range(num_epochs):
-        # running_loss = 0.0
-        # for i, data in enumerate(data_loader_test):
-        #    running_loss += loss.item() 
 
+    for epoch in range(num_epochs):
     # train for one epoch, printing every 10 iterations
         metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
     
@@ -96,15 +92,15 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
         # Update the learning rate
         lr_scheduler.step()
 
-    return epoch + precedent_epoch, train_losses
+    return num_epochs + precedent_epoch, train_losses
 
 def load_model(save_dir):
     model, preprocess = get_model_instance_object_detection(2)
     checkpoint = torch.load(save_dir + '/checkpoint_epoch_0.pth', weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
-    #optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-    #epoch = checkpoint['epoch']
-    return model
+    optimizer = optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    return model, optimizer, epoch
 
 def evaluate_model(model, data_loader_test,device):
     val_metrics = []
@@ -154,11 +150,10 @@ def visualise_feature_maps(feature_maps, num_features=64):
         plt.tight_layout()
         plt.show()
 
-def plot_prediction(model, dataset, device):
-    img, target = dataset[6]
+def plot_prediction(model, dataset, device, index: int, save_dir: str):
+    img, target = dataset[index]
     num_epochs = 1
-    print_freq = 10
-    save_dir = './checkpoints'  
+    print_freq = 10  
 
     model = load_model(save_dir)
     with torch.no_grad():
@@ -172,7 +167,7 @@ def plot_prediction(model, dataset, device):
     output_image = draw_bounding_boxes(image, pred_boxes, colors="red")
     plt.figure(figsize=(12, 12))
     plt.imshow(output_image.permute(1, 2, 0))
-    plt.show()
+    plt.savefig(f'{index}.png', bbox_inches='tight') # tight removes whitespace
 
 
 def plot_eval_metrics(eval_metrics, epoch):
