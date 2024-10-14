@@ -2,7 +2,7 @@
 
 2/10/25
 
-Following on from analysis [03](03_ResNet50_setup.qmd):  
+**Following on from analysis [03](03_ResNet50_setup.qmd):**  
 After one epoch of training, I now have some insight into how the code
 is behaving. Firstly, [standard error](results/error.txt) from the final
 code block of analysis 03 indicates a problem with the
@@ -20,7 +20,9 @@ folder. I think the data might hint at some unwanted behaviour in some
 of the network modules which must be identified and corrected in future
 development.  
 
-**Purpose:** create plots from one epoch of training from analysis
+### Purpose:
+
+To create plots from one epoch of training from analysis
 [03](02_helper_training_functions.md)’s standard output and explore the
 implications of these data on the functionality of analysis
 [02](02_helper_training_functions.md)’s helper training functions, as
