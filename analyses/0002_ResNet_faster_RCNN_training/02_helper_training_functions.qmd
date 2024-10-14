@@ -154,10 +154,10 @@ Return Values: \
 #### Load a model from a .pth file:
 ```{python}
 def load_model(save_dir: str, num_classes: int, model_file_name: str):
-    model, preprocess = get_model_instance_bounding_boxes(num_classes)
+    model, preprocess = get_model_instance_object_detection(num_classes)
     checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    optimizer = model.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
     return model, optimizer, epoch
 ```

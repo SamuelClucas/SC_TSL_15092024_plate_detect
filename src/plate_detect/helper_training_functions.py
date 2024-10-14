@@ -94,11 +94,11 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
 
     return num_epochs + precedent_epoch, train_losses
 
-def load_model(save_dir):
-    model, preprocess = get_model_instance_object_detection(2)
-    checkpoint = torch.load(save_dir + '/checkpoint_epoch_0.pth', weights_only=True)
+def load_model(save_dir: str, num_classes: int, model_file_name: str):
+    model, preprocess = get_model_instance_object_detection(num_classes)
+    checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer = optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    optimizer = model.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
     return model, optimizer, epoch
 
