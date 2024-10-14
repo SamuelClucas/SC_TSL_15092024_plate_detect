@@ -1,0 +1,29 @@
+# Diagnostic: Inspecting One Epoch Evaluation Loss Metrics
+
+2/10/25
+
+Following on from analysis [03](03_ResNet50_setup.qmd):  
+After one epoch of training, I now have some insight into how the code
+is behaving. Firstly, [standard error](results/error.txt) from the final
+code block of analysis 03 indicates a problem with the
+‘plot_eval_metrics’ function from analysis
+[02](02_helper_training_functions.md). I think this is relatively benign
+and simple to fix. It’s a new function I wrote hastily and I will
+rewrite it.  
+
+More importantly though, I first want to inspect the loss_classifier,
+loss_objectness, loss_rpn_box_reg and loss metrics produced by the call
+to ‘evaluate()’ again defined in analysis
+[02](02_helper_training_functions.md). This function uses utility
+modules found in the [torchvision_deps](../../src/torchvision_deps/)
+folder. I think the data might hint at some unwanted behaviour in some
+of the network modules which must be identified and corrected in future
+development.  
+
+**Purpose:** create plots from one epoch of training from analysis
+[03](02_helper_training_functions.md)’s standard output and explore the
+implications of these data on the functionality of analysis
+[02](02_helper_training_functions.md)’s helper training functions, as
+well as the utility modules in
+[torchvision_deps](../../src/torchvision_deps/). From this, I must
+correct any dysfunction prior to training on the cluster.
