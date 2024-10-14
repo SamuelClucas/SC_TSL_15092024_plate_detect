@@ -1,0 +1,230 @@
+  0/445
+loss: 12.4731
+loss_classifier: 0.6946 
+loss_objectness: 0.5575
+loss_rpn_box_reg: 11.2197
+ 10/445
+loss: 12.2818
+loss_classifier: 0.6680 
+loss_objectness: 0.5165
+loss_rpn_box_reg: 11.2103
+ 20/445
+loss: 11.9741
+loss_classifier: 0.5031 
+loss_objectness: 0.1025
+loss_rpn_box_reg: 11.2047
+ 30/445
+loss: 11.3177
+loss_classifier: 0.1428 
+loss_objectness: 0.0437
+loss_rpn_box_reg: 11.0751
+ 40/445
+loss: 10.9000
+loss_classifier: 0.0464 
+loss_objectness: 0.0347
+loss_rpn_box_reg: 10.7784
+ 50/445
+loss: 10.1130
+loss_classifier: 0.0280 
+loss_objectness: 0.0291
+loss_rpn_box_reg: 10.0758
+ 60/445
+loss: 5.4877 
+loss_classifier: 0.0184 
+loss_objectness: 0.0268
+loss_rpn_box_reg: 5.4460 
+ 70/445
+loss: 2.9799 
+loss_classifier: 0.0132 
+loss_objectness: 0.0268
+loss_rpn_box_reg: 2.9488 
+ 80/445
+loss: 1.8505 
+loss_classifier: 0.0090 
+loss_objectness: 0.0169
+loss_rpn_box_reg: 1.8392 
+ 90/445
+loss: 1.8975 
+loss_classifier: 0.0071 
+loss_objectness: 0.0081
+loss_rpn_box_reg: 1.8844 
+100/445
+loss: 2.8099 
+loss_classifier: 0.0071 
+loss_objectness: 0.0056
+loss_rpn_box_reg: 2.7990 
+110/445
+loss: 2.2265 
+loss_classifier: 0.0054 
+loss_objectness: 0.0048
+loss_rpn_box_reg: 2.2155 
+120/445
+loss: 1.9435 
+loss_classifier: 0.0048 
+loss_objectness: 0.0019
+loss_rpn_box_reg: 1.9376 
+130/445
+loss: 1.7308 
+loss_classifier: 0.0043 
+loss_objectness: 0.0030
+loss_rpn_box_reg: 1.7195 
+140/445
+loss: 1.5541 
+loss_classifier: 0.0028 
+loss_objectness: 0.0042
+loss_rpn_box_reg: 1.5190 
+150/445
+loss: 1.2306 
+loss_classifier: 0.0024 
+loss_objectness: 0.0038
+loss_rpn_box_reg: 1.2248 
+160/445
+loss: 1.0814 
+loss_classifier: 0.0018 
+loss_objectness: 0.0020
+loss_rpn_box_reg: 1.0769 
+170/445
+loss: 1.1236 
+loss_classifier: 0.0015 
+loss_objectness: 0.0017
+loss_rpn_box_reg: 1.1205 
+180/445
+loss: 1.3348 
+loss_classifier: 0.0013 
+loss_objectness: 0.0007
+loss_rpn_box_reg: 1.3297 
+190/445
+loss: 1.0461 
+loss_classifier: 0.0011 
+loss_objectness: 0.0008
+loss_rpn_box_reg: 1.0428 
+200/445
+loss: 0.8895 
+loss_classifier: 0.0010 
+loss_objectness: 0.0012
+loss_rpn_box_reg: 0.8852 
+210/445
+loss: 0.9960 
+loss_classifier: 0.0011 
+loss_objectness: 0.0005
+loss_rpn_box_reg: 0.9941 
+220/445
+loss: 0.8399 
+loss_classifier: 0.0011 
+loss_objectness: 0.0009
+loss_rpn_box_reg: 0.8378 
+230/445
+loss: 1.2622 
+loss_classifier: 0.0009 
+loss_objectness: 0.0009
+loss_rpn_box_reg: 1.2600 
+240/445
+loss: 1.2218 
+loss_classifier: 0.0007 
+loss_objectness: 0.0009
+loss_rpn_box_reg: 1.2207 
+250/445
+loss: 1.8142 
+loss_classifier: 0.0007 
+loss_objectness: 0.0007
+loss_rpn_box_reg: 1.8125 
+260/445
+loss: 1.6318 
+loss_classifier: 0.0006 
+loss_objectness: 0.0005
+loss_rpn_box_reg: 1.6298 
+270/445
+loss: 1.3040 
+loss_classifier: 0.0005 
+loss_objectness: 0.0003
+loss_rpn_box_reg: 1.3028 
+280/445
+loss: 1.6197 
+loss_classifier: 0.0005 
+loss_objectness: 0.0011
+loss_rpn_box_reg: 1.6135 
+290/445
+loss: 1.9159 
+loss_classifier: 0.0005 
+loss_objectness: 0.0011
+loss_rpn_box_reg: 1.9139 
+300/445
+loss: 1.6265 
+loss_classifier: 0.0004 
+loss_objectness: 0.0003
+loss_rpn_box_reg: 1.6257 
+310/445
+loss: 1.3157 
+loss_classifier: 0.0004 
+loss_objectness: 0.0003
+loss_rpn_box_reg: 1.3151 
+320/445
+loss: 1.5974 
+loss_classifier: 0.0004 
+loss_objectness: 0.0015
+loss_rpn_box_reg: 1.5681 
+330/445
+loss: 2.0970 
+loss_classifier: 0.0004 
+loss_objectness: 0.0004
+loss_rpn_box_reg: 2.0959 
+340/445
+loss: 1.4664 
+loss_classifier: 0.0003 
+loss_objectness: 0.0003
+loss_rpn_box_reg: 1.4655 
+350/445
+loss: 1.4350 
+loss_classifier: 0.0005 
+loss_objectness: 0.0005
+loss_rpn_box_reg: 1.4344 
+360/445
+loss: 2.5771 
+loss_classifier: 0.0004 
+loss_objectness: 0.0005
+loss_rpn_box_reg: 2.5583 
+370/445
+loss: 3.8424 
+loss_classifier: 0.0002 
+loss_objectness: 0.0005
+loss_rpn_box_reg: 3.8294 
+380/445
+loss: 1.6415 
+loss_classifier: 0.0002 
+loss_objectness: 0.0007
+loss_rpn_box_reg: 1.6396 
+390/445
+loss: 1.1593 
+loss_classifier: 0.0002 
+loss_objectness: 0.0006
+loss_rpn_box_reg: 1.1582 
+400/445
+loss: 3.4072 
+loss_classifier: 0.0002 
+loss_objectness: 0.0006
+loss_rpn_box_reg: 3.3835 
+410/445
+loss: 3.0871 
+loss_classifier: 0.0002 
+loss_objectness: 0.0006
+loss_rpn_box_reg: 3.0852 
+420/445
+loss: 2.1452 
+loss_classifier: 0.0002 
+loss_objectness: 0.0006
+loss_rpn_box_reg: 2.1442 
+430/445
+loss: 1.3435 
+loss_classifier: 0.0002 
+loss_objectness: 0.0007
+loss_rpn_box_reg: 1.3427 
+440/445
+loss: 1.1867 
+loss_classifier: 0.0002 
+loss_objectness: 0.0007
+loss_rpn_box_reg: 1.1862 
+444/445
+loss: 1.3435 
+loss_classifier: 0.0002 
+loss_objectness: 0.0006
+loss_rpn_box_reg: 1.3427 
