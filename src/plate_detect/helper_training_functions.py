@@ -20,11 +20,8 @@ import torch.nn as nn
 from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 
-from  torchvision_deps.engine import train_one_epoch, evaluate
+from  torchvision_deps.engine import train_one_epoch, evaluate # used by evaluate_model()
 from torchvision_deps.T_and_utils import utils
-
-
-
 
 def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_fpn_v2:
     # New weights with accuracy 80.858%
@@ -34,9 +31,17 @@ def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_f
     # finetuning pretrained model by transfer learning
     # get num of input features for classifier
     in_features = model.roi_heads.box_predictor.cls_score.in_features
+
+    params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.SGD( # optimizer defined in model getter according to pytorch 'recipes'
+        params,
+        lr=0.005,
+        momentum=0.9,
+        weight_decay=0.0005
+    )
     # replace the pre-trained head with a new one
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_class)
-    return model, preprocess
+    return model, optimizer,preprocess
 
 def save_checkpoint(model, optimizer, epoch, save_dir):
     if not os.path.exists(save_dir):
@@ -53,20 +58,11 @@ def save_checkpoint(model, optimizer, epoch, save_dir):
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved: {save_path}")
 
-def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir): 
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir, optimizer): 
     model.train()
-
     # Initialize lists to store metrics
     train_losses = []
-
-     # construct an optimizer
-    params = [p for p in model.parameters() if p.requires_grad]
-    optimizer = torch.optim.SGD(
-        params,
-        lr=0.005,
-        momentum=0.9,
-        weight_decay=0.0005
-    )
+    
     # and a learning rate scheduler
     lr_scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer,
@@ -85,7 +81,6 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
         # Save checkpoint
         save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
         
-        
         # Plot and save the metrics
         plot_eval_metrics(train_losses, epoch + precedent_epoch)
         
@@ -94,11 +89,12 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
 
     return num_epochs + precedent_epoch, train_losses
 
+
 def load_model(save_dir: str, num_classes: int, model_file_name: str):
-    model, preprocess = get_model_instance_object_detection(num_classes)
+    model, optimizer, preprocess = get_model_instance_object_detection(num_classes)
     checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
-    optimizer = model.load_state_dict(checkpoint['optimizer_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
     return model, optimizer, epoch
 
@@ -107,7 +103,7 @@ def evaluate_model(model, data_loader_test,device):
     model.eval()
 
     coco_evaluator = evaluate(model, data_loader_test, device=device)
-        
+    print(coco_evaluator)
     # Extract evaluation metrics
     eval_stats = coco_evaluator.coco_eval['bbox'].stats
     val_metrics.append(eval_stats)

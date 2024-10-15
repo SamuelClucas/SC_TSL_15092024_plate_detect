@@ -145,8 +145,13 @@ class Plate_Image_Dataset(Plate_Image_Dataset):
  
 ## Creating a 'helper_training_functions' Module:
 
-I created numerous helper functions for import into training/evaluation scripts. This document serves to explain each one. \
+I created numerous helper functions for import into training/evaluation scripts. They are defined as a module inside [plate_detect](../src/plate_detect/helper_training_functions.py). The most recent version of 'helper_training_functions' can be imported into scripts like so:  \
+```{python}
+#| execute: false
+from plate_detect import helper_training_functions
+```
 
+Within this analysis, however, I define each function locally as I iteratively rewrite them during debugging. \
 ### Programme Overview:
 
 #### Imports:
@@ -516,7 +521,7 @@ For reference, here is a useful [pytorch tutorial](https://pytorch.org/tutorials
 
 #### Imports:
 ```{python}
-from plate_detect import Plate_Image_Dataset, helper_training_functions
+from plate_detect import Plate_Image_Dataset #, helper_training_functions # in scripts, this is imported. Here, to document the debug process, I am using the iterations of these functions defined locally in the previous section
 import torch
 from torchvision.transforms.v2 import functional as F
 from pathlib import Path
@@ -556,9 +561,13 @@ print(f'Training labels csv file: {annotations_file}')
 img_dir: Path= project_dir_root.parents[0].joinpath('raw', 'positives')  # 'SC_TSL_15092024_Plate_Detect/train/images/positives/' on UNIX systems
 print(f'Training dataset directory: {img_dir}')
 
-num_class = 2 # plate or background
+num_class: int = 2 # plate or background
+ 
 # creates resnet50 v2 faster r cnn model with new head for class classification
-model, preprocess = helper_training_functions.get_model_instance_object_detection(num_class)
+
+model, preprocess = get_model_instance_object_detection(num_class) # see next comment for how this function is called when imported 
+# model, preprocess = helper_training_functions.get_model_instance_object_detection(num_class)
+
 # move model to the right device
 model.to(device)
 ```
@@ -610,15 +619,16 @@ data_loader_test = torch.utils.data.DataLoader(
 
 #### Calling train, evaluate, and plot helper functions...
 ```{python}
+#| eval: false
 save_dir = 'results'
 num_epochs = 1
 precedent_epoch = 0
 
-epoch, loss_metrics = helper_training_functions.train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
+epoch, loss_metrics = train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
 
-eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test,device)
+eval_metrics = evaluate_model(model, data_loader_test,device)
 
-helper_training_functions.plot_eval_metrics(eval_metrics, epoch)
+plot_eval_metrics(eval_metrics, epoch)
 
 
 print("\n -end-")
@@ -638,12 +648,13 @@ print("\n -end-")
     3. Visualisation plot includes: \
         - Training loss curves (currently commented out...) \
         - Precision and recall metrics \
-- *Note* I have only set it to train for 1 epoch here just to show the output. I need to train for longer on cluster. \
+- *Note* I have only set it to train for 1 epoch here just to show the output. I will train for longer on the cluster. Here, my focus is debugging the helper functions, not training the model. \
 
 ### Debugging 'plot_eval_metrics'
 
-Execution of the previous block of code produced an error pertaining to the plt_eval_metrics function in 'helper_training_functions'. Training seemed to complete 'successfully' (without any overt error message), as shown by the standard output:
-```{bash}
+Execution of the previous block of code produced an error pertaining to the plt_eval_metrics function in 'helper_training_functions'. 
+
+Training seemed to complete 'successfully' (without any overt error message), as shown by the standard output:
 #| code-fold: true
 ----- stdout -----
 Epoch: [0]  [  0/445]  eta: 3:16:15  lr: 0.000016  loss: 12.4731 (12.4731)  
@@ -877,6 +888,7 @@ loss_objectness: 0.0006 (0.0217)  loss_rpn_box_reg: 1.3427 (2.9346)  time:
 13.3004  data: 0.0221
 Epoch: [0] Total time: 3:47:38 (30.6933 s / it)
 ```
+\
 Standard error is as follows:
 ```{bash}
 TypeError                                 Traceback (most recent call last)
@@ -912,9 +924,9 @@ TypeError: 'float' object is not subscriptable
 Firstly, I will type- and shape-check the eval_metrics list. I will load the model from the .pth file saved from training for the sake of efficiency (no need to train again, as it did not produce the error and would unneccessarily waste time). 'load_model()' expects the save directory string of the .pth file, the number of classes (2: background, plate), and the model file name. It returns the model, optimizer, and epoch. I then pass the model to evaluate_model(). \
 
 ```{python}
-model, optimizer, epoch = helper_training_functions.load_model('checkpoints/', 2, 'checkpoint_epoch_0')
+model, optimizer, epoch = load_model('checkpoints/', 2, 'checkpoint_epoch_0')
 
-eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test, device)
+eval_metrics = evaluate_model(model, data_loader_test, device)
 
 print(eval_metrics, '\n', shape(eval_metrics))
 
@@ -1032,55 +1044,11 @@ def load_model(save_dir: str, num_classes: int, model_file_name: str):
     epoch = checkpoint['epoch']
     return model, optimizer, epoch
 ```
-After reimporting the revised plate_detect.helper_training_functions with the above modifications (see imports for this sub-section), I ran the following script:
+After the above modifications, I ran the following script:
 ```{python}
-device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-project_dir_root: Path= Path.cwd() # 'SC_TSL_15092024_Plate_Detect/' type PosixPath for UNIX, WindowsPath for windows...
-print(f'Project root directory: {str(project_dir_root)}')
-
-annotations_file: Path = project_dir_root.parents[0].joinpath('lib', 'labels.csv')
-print(f'Training labels csv file: {annotations_file}')
-
-img_dir: Path= project_dir_root.parents[0].joinpath('raw', 'positives')  # 'SC_TSL_15092024_Plate_Detect/train/images/positives/' on UNIX systems
-print(f'Training dataset directory: {img_dir}')
-
-num_class = 2
-_, _, preprocess = helper_training_functions.get_model_instance_object_detection(num_class) # load_model already calls model getter, no need to store it here
-
-dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
-        img_dir=str(img_dir), 
-        annotations_file=str(annotations_file),
-        transforms=preprocess, 
-        )
-
-# split the dataset in train and test set
-dataset_size = len(dataset)
-validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
-indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
-
-dataset_validation = torch.utils.data.Subset(dataset, indices[-validation_size:])
-dataset_train = torch.utils.data.Subset(dataset, indices[:-validation_size])
-
-data_loader = torch.utils.data.DataLoader(
-    dataset_train,
-    batch_size=1,
-    shuffle=True,
-    collate_fn=utils.collate_fn
-)
-
-data_loader_test = torch.utils.data.DataLoader(
-    dataset_validation,
-    batch_size=1,
-    shuffle=False,
-    collate_fn=utils.collate_fn
-)
-# move model to the right device
-model.to(device)
-
 model, optimizer, epoch = helper_training_functions.load_model('checkpoints/', num_class, 'checkpoint_epoch_0')
 
-eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test, device)
+eval_metrics = evaluate_model(model, data_loader_test, device)
 
 print(eval_metrics, '\n', len(eval_metrics))
 
@@ -1090,9 +1058,64 @@ print("\n -end-")
 ```
 ... the evaluator now runs again! It may be sensible to tuck data_loader, data_loader_test, as well as validation and training subset and indice permutation lists, into load_model. With that being said, I'm conscious that the function signatures are huge, as well as their return statements. I don't think I should add to that. Further to this, implementation of these helper functions in different object detection contexts will likely be suited to different batching parameters based on variables like dataset size. For this reason, I think it's best load_model() handles loading the optimizer and model deserialisation and variable loading only. \
 
+The standard out based on the helper_training_functions defined up to this point is:
+```{bash}
+Project root directory: /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/analyses
+Training labels csv file: /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/lib/labels.csv
+Training dataset directory: /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/raw/positives
+creating index...
+index created!
+Test:  [ 0/50]  eta: 0:08:31  model_time: 10.2026 (10.2026)  evaluator_time: 0.0037 (0.0037)  time: 10.2212  data: 0.0148
+Test:  [49/50]  eta: 0:00:10  model_time: 10.2246 (10.6478)  evaluator_time: 0.0047 (0.0055)  time: 10.4892  data: 0.0122
+Test: Total time: 0:08:53 (10.6671 s / it)
+Averaged stats: model_time: 10.2246 (10.6478)  evaluator_time: 0.0047 (0.0055)
+Accumulating evaluation results...
+DONE (t=0.07s).
+IoU metric: bbox
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.000
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.000
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.000
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+[array([ 0.,  0.,  0., -1.,  0.,  0.,  0.,  0.,  0., -1.,  0.,  0.])] 
+ 1
 
+ -end-
+ ```
 
+This output is interesting. Firstly, the loss metrics are missing from eval_metrics, yet are output at the end of the previous section. This is because the evaluate_model() function returns only coco_evaluator's 'bbox' stats. I  will print coco_evaluator to see if the loss metrics are stored there:
 
+```{python}
+def evaluate_model(model, data_loader_test,device):
+    val_metrics = []
+    model.eval()
+
+    coco_evaluator = evaluate(model, data_loader_test, device=device)
+    print(coco_evaluator)
+    # Extract evaluation metrics
+    eval_stats = coco_evaluator.coco_eval['bbox'].stats
+    val_metrics.append(eval_stats)
+    return val_metrics
+```
+
+```{python}
+eval_metrics = evaluate_model(model, data_loader_test, device)
+
+print(eval_metrics, '\n', len(eval_metrics))
+```
+The CocoEvaluator class is defined in [torchvision_deps](../src/torchvision_deps/coco_eval.py). 
+
+I have realised numerous mistakes:
+- When defining plot_eval_metrics(), I drafted the code to plot the training loss metrics, but forgot I wanted to separate this into its own function. Currently train() makes a call to plot_eval_metrics. Instead I will define a plot_train_loss_metrics() function and make a call to that instead inside train(). \
+- Based on the print(eval_metrics) in the former code block, the array indexing in plot_eval_metrics needs to be adjusted. \
+- Currently, I'm trying to plot the average loss and eval metrics. While this would be okay if I were training for many epochs, that won't work when trying to create a line plot for one epoch's training. Instead, I want to plot the metrics as the training or evaluation happens. Currently I am using train_one_epoch() and evaluate() from [engine](../src/torchvision_deps/engine.py) in torchvision_deps. They use PyTorch's [MetricLogger](https://pytorch.org/tnt/stable/utils/generated/torchtnt.utils.loggers.MetricLogger.html) to store metrics, where 'log_every()' from [coco_eval](../src/torchvision_deps/coco_eval.py) is handling the rate printing of metrics as training/evaluating progresses through the epoch. I want to plot the data from log_every()'s standard output. I suspect this will require modification to either log_every or the metric loggers in engine. This discussion is helpful: https://discuss.pytorch.org/t/object-detection-fine-tuning-interpreting-printout-of-train-one-epoch/193496/2 \
 
 
 
