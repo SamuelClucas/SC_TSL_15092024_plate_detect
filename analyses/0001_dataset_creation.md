@@ -60,12 +60,12 @@ accounted/compensated for.
 ### Setting up the camera inside the incubator: 
 
 This is the incubator Simon Foster allowed me to use:  
-![Incubator](images/incubator.jpeg)  
+![Incubator](../img/incubator.jpeg)  
 
 I used cellotape to temporarily fix the RPi board to the side so that it
 is beyond the camera’s field of view, the camera secured to the top
 looking down.  
-![Mock-setup](images/setup.jpeg)  
+![Mock-setup](../img/setup.jpeg)  
 
 ### Using timelapser: 
 
@@ -85,10 +85,10 @@ seconds.  
 
 Standard output stream (not a screenshot… apologies):  
 ![Example standard output stream from
-timelapser](images/timelapser.jpeg)  
+timelapser](../img/timelapser.jpeg)  
 
 This results in images like this:  
-![Raw image capture](images/raw_example.png)  
+![Raw image capture](../img/raw_example.png)  
 
 ## Cropping and Downsizing Images: 
 
@@ -105,7 +105,7 @@ in length.
 The following program crops the raw .png images down into composite
 images and scales them down. For the sake of space and time efficiency
 (as git struggles with large file uploads), I have included just one
-[‘raw_example.png’](images/raw_example.png) image.  
+[‘raw_example.png’](../img/raw_example.png) image.  
 
 ### Program Overview: 
 
@@ -153,13 +153,13 @@ if __name__ == '__main__':
 raw image), then scaled down so that their shortest side is 600 pixels
 long, like these:
 
-<img src="images/downsized/0_0_raw_example.png" width="100"
+<img src="../img/downsized/0_0_raw_example.png" width="100"
 alt="image" />
-<img src="images/downsized/0_1_raw_example.png" width="100"
+<img src="../img/downsized/0_1_raw_example.png" width="100"
 alt="image" />
-<img src="images/downsized/0_2_raw_example.png" width="100"
+<img src="../img/downsized/0_2_raw_example.png" width="100"
 alt="image" />
-<img src="images/downsized/0_3_raw_example.png" width="100"
+<img src="../img/downsized/0_3_raw_example.png" width="100"
 alt="image" />  
 *And so on…*  
 
@@ -178,8 +178,8 @@ alt="image" />
   ‘row_column_MMDDhhmmss.png’.  
 
 After labelling plates in the images using LabelImg, I wrote a a simple
-[shell script](delete_unlabelled.sh) to copy the images that had at
-least one plate labelled to a new directory:
+shell script to copy the images that had at least one plate labelled to
+a new directory:
 
 ``` {bash}
 #!/bin/bash
@@ -194,19 +194,17 @@ for f in *.png; do
 done
 ```
 
-This forms the basis of the [positive
-dataset](../../../train/images/positives), where there is at least one
-plate present in each image with a corresponding xml label file.  
+This forms the basis of the [positive dataset](../raw/positives), where
+there is at least one plate present in each image with a corresponding
+xml label file.  
 
 ## Converting Labels from XML to CSV: 
 
 I used [LabelImg](https://pypi.org/project/labelImg/) to label the image
 ‘samples’ with bounding boxes around any visible plates (or parts of
 plates) in the sample. Hence for this dataset, there are two classes:
-plate, background. Samples with associated labels were separated from
-those without (i.e., no plate visible in sample) by this simple [shell
-script](delete_unlabelled.sh). This comprises the ‘positives’ dataset,
-i.e., each sample has at least one bounding box label.  
+plate, background. This comprises the ‘positives’ dataset, i.e., each
+sample has at least one bounding box label.  
 
 > [!NOTE]
 >
