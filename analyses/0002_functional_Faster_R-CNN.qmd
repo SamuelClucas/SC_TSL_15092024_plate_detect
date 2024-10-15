@@ -1,0 +1,1173 @@
+---
+title: "Implementing a Functional Faster R-CNN Model"
+date: 09-10-2024
+date-format: short
+---
+
+## Introduction: \
+There are numerous object detection model architectures available. \
+Typically, they comprise: a convolutional module used for feature extraction; some mechanism for identifying Regions of Interest (ROIs) (for example, by [selective search](https://link.springer.com/article/10.1007/s11263-013-0620-5), or by a [Region Proposal Network] (RPN) that uses 'anchors' and is integrated within the model); and classification/masking/bounding box regression heads. \
+Chosen somewhat arbitrarily, I will first code and train a Faster R-CNN architecture. There are others that might be worth exploring (e.g., You Only Look Once (YOLO), Single-Shot Detector(SSD)), but I think implementing the former is more realistic given my inexperience with deep machine learning frameworks prior to this project. \
+
+### Goal: \
+Develop a functional initial object detection pipeline using a Faster R-CNN model trained on the dataset created in [analysis 0001](0001_dataset_creation.md) to facilitate the [imaging system's](https://github.com/SamuelClucas/SC_TSL_06082024_imaging_system_design) recognition of and navigation to growth plates inside the incubator. \
+
+### Hypothesis: \
+Can a Faster R-CNN model trained on [this](../raw/) dataset identify and label plates with bounding boxes in a validation subset with a mean Average Precision (mAP) of greater than 50%, based on an Intersection over Union (IoU) metric. \
+
+### Rationale: \
+Real-time object detection using the Faster R-CNN architecture has been robustly established in the literature ([Shaoqing Ren et al., 2016](https://proceedings.neurips.cc/paper/2015/file/14bfa6bb14875e45bba028a21ed38046-Paper.pdf),[Yu Liu, 2018](https://ieeexplore.ieee.org/abstract/document/8695451), [Wenze Li, 2021](https://iopscience.iop.org/article/10.1088/1742-6596/1827/1/012085/meta)). \
+
+Based on reading of the [Universal Approximation Theorem](https://mitliagkas.github.io/ift6085-2020/ift-6085-lecture-10-notes.pdf), I think it is reasonable to posit that given sufficient, representative, and clear training data, the network should be abe to detect plates in images to at least some degree of accuracy. The question is whether or not this accuracy is high enough to be practically useful. \
+
+### Experimental Plan: \
+- I will use PyTorch. Firstly, I need to write two custom dataset classes to handle storing and accessing images and their corresponding bounding box vertices for both the positives and negatives datasets (the latter to be used in [hard negatives mining](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123590120.pdf) to further optimise the model). \
+- Once instantiated, this class is passed to PyTorch's DataLoader for training or evaluation, as outlined in this [pytorch tutorial](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html). I would like to write a helper_training_functions src file to be imported in training scripts to keep the latter concise and readable. \
+- Training on the cluster requires that scripts don't need to download files at runtime. This will require a local Faster R-CNN class definition file. \
+- [ResNet50](https://blog.roboflow.com/what-is-resnet-50/#:~:text=One%20such%20architecture%20is%20called,it%2C%20and%20categorize%20them%20accordingly.)'s COCO or ImageNet pre-trained weights aren't going to be useful. This is common sense. 'Non-lambertian' or transparent objects form a minority within these datasets, which isn't helpful in training a network to recognise an object that is transparent. For this reason, I will train a ResNet backbone (I'm not sure many layers this will have, perhaps 50-layer or 101-layer) on a transparent object dataset. Google's [cleargrasp](https://github.com/Shreeyak/cleargrasp/tree/master) project required the creation of [transparent object datasets](https://sites.google.com/view/transparent-objects). I will train the network on these first, with the hopes that the backbone will then be primed to extract features typical of transparent objects. \
+- I will then freeze the backbone weights prior to training of the RPN layer, and the classification and bounding box regression heads. This model will undergo evaluation to answer the hypothesis. \
+
+## Creating a Dataset Class: Plate_Image_Dataset() \
+*Note:* \
+I used [this](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html) Pytorch tutorial as a launchpoint. As per the tutorial, I downloaded several helper functions available on Pytorch vision's github. \ 
+
+Why not just import them into scripts through the torchvision library? \
+- See fmassa's comment [here](https://github.com/pytorch/vision/issues/2254). 
+
+If you install the package as described in the project [README](../README.md), they have already been installed under [src/torchvision_deps/](../src/torchvision_deps/) and can be imported into scripts. \
+
+For reference, I have included wget commands for each below:
+```{bash}
+#| eval: false
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/engine.py 
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/utils.py
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/coco_utils.py
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/coco_eval.py
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/transforms.py
+```
+### Class Overview:
+
+#### Imports...
+```{python}
+import os
+from torchvision_deps import engine
+import re
+from glob import glob
+import numpy as np
+import pandas as pd
+from torchvision.io import read_image
+import torch
+from torchvision.transforms.v2 import functional as F
+from torchvision import tv_tensors
+from collections.abc import Sequence # for type hints like 'tuple[]': https://docs.python.org/3/library/typing.html
+```
+
+#### Defining the constructor...
+```{python}
+class Plate_Image_Dataset(torch.utils.data.Dataset):
+    def __init__(self, annotations_file: str, img_dir: str, transforms=None):
+        self.img_labels: pd.Dataframe = pd.read_csv(annotations_file) # bounding box vertices' coordinates
+        self.boxes: np.array[int] = None
+
+        self.img_files: list[str] = [f for f in glob(img_dir + "/*.png")]
+        self.transforms = transforms
+```
+**Breakdown:** \
+- 'Plate_Image_Dataset' is a custom dataset that represents a map from keys/indices to data samples, hence inherits from PyTorch's provided abstract class '[torch.utils.data.Dataset](https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset)'. \
+- Initialise 'self.img_labels' as as a [pandas DataFrame](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html), reading from the csv file containing bounding box vertex coordinates passed to the constructor as a string in 'annotations_file'. \
+- Declare 'self.boxes' as a [numpy array](https://numpy.org/doc/stable/reference/generated/numpy.array.html) of integers, later to be used to store all bounding boxes associated with an image (using an index) in __getitem__. \
+- Initialise 'self.img_files' as a list of strings, using [glob](https://docs.python.org/3/library/glob.html) to find all images (pathnames ending in .png) at the image dataset directory passed to the constructor as a string in 'img_dir'. The notation [f for f in...] is a concise way to create lists in python (see [list comprehension](https://docs.python.org/3/tutorial/datastructures.html#list-comprehensions)). \
+- Initialise 'self.transforms' as transforms passed the constructor. The default is None. See PyTorch's transforms documentation [here](https://pytorch.org/vision/master/transforms.html#transforms). \
+
+#### Defining __len__...
+```{python}
+class Plate_Image_Dataset(Plate_Image_Dataset):
+    def __len__(self) -> int:
+        return len(self.img_files)
+```
+- Just returns the number of image files in the dataset as an integer. \
+
+#### Defining __getitem__...
+```{python}
+class Plate_Image_Dataset(Plate_Image_Dataset):
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, tv_tensors.Image]: 
+        # loads images and bounding boxes
+        img: torch.Tensor = read_image(self.img_files[idx]) # uint8
+        
+        # get digits from self.img_labels eg. ymaxs = '[ymax1, ymax2, ymax3]' returned from pd.DataFrame
+        x1 = [int(item) for item in re.findall(r'\d+', str(self.img_labels['xmins'][idx]))]
+        y1 = [int(item) for item in re.findall(r'\d+', str(self.img_labels['ymins'][idx]))]
+        x2 = [int(item) for item in re.findall(r'\d+', str(self.img_labels['xmaxs'][idx]))]
+        y2 = [int(item) for item in re.findall(r'\d+', str(self.img_labels['ymaxs'][idx]))]
+
+        num_objs = len(x1)
+        # this class is for the positives dataset, and so every image has at least one labelled bounding box, hence should be tensor of ones shape [N]
+        labels = torch.ones((num_objs,), dtype=torch.int64) 
+
+        # boxes expected shape [N, 4] Tensor x1, y1, x2, y2 where 0 <= x1 < x2 same for y1 and y2 [row = boxes, columns: x1y1x2y2]
+        self.boxes = [[x1[i], y1[i], x2[i], y2[i]] for i in range(num_objs)]
+       
+        # one BoundingBoxes instance per sample, "{img": img, "bbox": BoundingBoxes(...)}" where BoundingBoxes contains all the bounding box vertices associated with that image in the form x1, y1,x2, y2
+        self.boxes = torch.from_numpy(np.array(self.boxes)) # [N, 4] tensor
+        
+        image_id = idx
+
+        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
+
+        area = (self.boxes[:, 3] - self.boxes[:, 1]) * (self.boxes[:, 2] - self.boxes[:, 0]) 
+
+        # tv.tensors is tensor of images with associated metadata
+        img = tv_tensors.Image(img)
+        target = {}
+        target["boxes"] = tv_tensors.BoundingBoxes(self.boxes, format="XYXY", canvas_size=F.get_size(img))
+        target["labels"] = labels
+        target["image_id"] = image_id
+        target["area"] = area
+        target["iscrowd"] = iscrowd
+        
+        if self.transforms is not None:
+            img = self.transforms(img)
+            target["boxes"] = self.transforms(target["boxes"])
+        
+        return img, target
+```
+
+**Breakdown:** \
+- I'm not particularly familiar with indexing pandas DataFrames. I used pythons [regular expression operations](https://docs.python.org/3/library/re.html) to extract digits ('\\d') from the dataframe at a given index. Using isdigit() doesn't work (for example, iterating through '200' with isdigit() would return '2', '0', '0'). I struggled to use pandas 'loc' indexing attribute. I may return to this to do so. \
+- __getitem__ must return a tuple as specified in the tutorial. Here, img is of subclass of [tv.Tensor](https://pytorch.org/vision/master/tv_tensors.html) ([an image stored as a 3D matrix/tensor](https://discuss.pytorch.org/t/what-is-image-really/151290)). This tensor should be of shape [3, H, W], where 3 is the number of channels. Target is a dict with the following fields: \
+    - "boxes": another [tv.Tensor](https://pytorch.org/vision/master/tv_tensors.html) subclass with shape [N, 4] where N is the number of bounding boxes associated with the image at the index being 'got'. Columns are x1, y1, x2, y2, where 0 <= x1 < x2 (same for y1 and y2). This is specified by 'format'. \
+    - "labels": class labels (here 0 for background, 1 for 'plate') of type int64. \
+    - "image_id": image index in dataset of type int64. \
+    - "area": float torch.Tensor of shape [N]. The area of the bounding box. This is used by coco_eval in [src/torchvision_deps](../src/torchvision_deps/) to separate metric scores for small, medium and large boxes. \
+    - "iscrowd": int64 torch.Tensor of shape [N]. Instances with iscrowd=True are ignored during evaluation. This doesn't really serve a purpose other than to prevent errors popping up when using the [torchvision_deps](../src/torchvision_deps/). I plan to either extricate it from the dependencies so that it can be removed from the dataset class. For now, it is always initialised as a tensor of zeros using [torch.zeros](https://pytorch.org/docs/stable/generated/torch.zeros.html). \
+- wrapping image tensors and bounding boxes in TVTensor subclasses allows for application of torchvision [built-in transformations](https://pytorch.org/vision/stable/transforms.html). Based on the TVTensor subclass wrapping the object, the tranforms dispatch the object to the appropriate implementation (as described [here](https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_getting_started.html#what-are-tvtensors)). \
+- in the tutorial, img and target are passed to trainsforms together and returned as a tuple. For some reason, I could not get it to work this way. I suspect it is something to do with the types of the fields of target not all being TVTensors. Regardless, I pass boxes and img to transforms separately, then return them from __getitem__ as a tuple. Hopefully this isn't behaving unexpectedly in the torchvision deps - unit tests necessary to confirm this. \
+ 
+## Creating a 'helper_training_functions' Module:
+
+I created numerous helper functions for import into training/evaluation scripts. This document serves to explain each one. \
+
+### Programme Overview:
+
+#### Imports:
+```{python}
+from torchvision_deps.engine import train_one_epoch, evaluate 
+import re
+from glob import glob
+import numpy as np
+import pandas as pd
+from torchvision.io import read_image
+import torch
+from torchvision.transforms.v2 import functional as F
+from torchvision import tv_tensors
+import matplotlib.pyplot as plt
+from pathlib import Path
+from typing import Dict, Union
+from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2, FastRCNNPredictor, FasterRCNN_ResNet50_FPN_V2_Weights
+import torchvision_deps.T_and_utils.utils as utils 
+import PIL
+from torchvision.utils import draw_bounding_boxes
+import torchvision
+import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
+```
+
+#### Get Faster R-CNN model instance for object detection...
+```{python}
+def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_fpn_v2:
+    # New weights with accuracy 80.858%
+    weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT # alias is .DEFAULT suffix, weights = None is random initialisation, box MAP 46.7, params, 43.7M, GFLOPS 280.37 https://github.com/pytorch/vision/pull/5763
+    model = fasterrcnn_resnet50_fpn_v2(weights=weights, box_score_thresh=0.0001)
+    preprocess = weights.transforms()
+    # finetuning pretrained model by transfer learning
+    # get num of input features for classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    # replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_class)
+    return model, preprocess
+```
+
+**Breakdown:** \
+- this approach requires permissions to download the model file from the internet (through 'torch.utils.model_zoo.load_url()'). For this reason, it is not amenable to training on the cluster. This will be addressed in analysis 0003, using a local Faster R-CNN with ResNet backbone class definition. Otherwise, this function still works. \
+- See pytorch's documentation on [ResNet50 faster R-CNN backbone](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html).
+
+#### Save epoch, model and optimizer state_dict in checkpoint dict:
+```{python}
+def save_checkpoint(model, optimizer, epoch, save_dir):
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }
+    
+    filename = f'checkpoint_epoch_{epoch}.pth'
+    save_path = os.path.join(save_dir, filename)
+    torch.save(checkpoint, save_path)
+    print(f"Checkpoint saved: {save_path}")
+```
+**Breakdown:** \
+- Creates a directory if it doesn't exist to store the checkpoints. \
+- Saves the current epoch number, model parameters (weights), and optimizer state to a dictionary. \
+- This allows for resuming training from a specific epoch in case of interruptions. \
+
+#### Training function:
+```{python}
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir): 
+    model.train()
+
+    # Initialize lists to store metrics
+    train_losses = []
+
+     # construct an optimizer
+    params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.SGD(
+        params,
+        lr=0.005,
+        momentum=0.9,
+        weight_decay=0.0005
+    )
+    # and a learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=3,
+        gamma=0.1
+    )
+
+    for epoch in range(num_epochs):
+    # train for one epoch, printing every 10 iterations
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+    
+    # Get the average loss for this epoch
+        epoch_loss = metric_logger.meters['loss'].global_avg
+        train_losses.append(epoch_loss)
+
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
+        
+        
+        # Plot and save the metrics
+        plot_eval_metrics(train_losses, epoch + precedent_epoch)
+        
+        # Update the learning rate
+        lr_scheduler.step()
+
+    return num_epochs + precedent_epoch, train_losses
+```
+
+**Breakdown:** \
+Setting the Model to Training Mode: \
+- model.train() sets the model to training mode. This is crucial because certain layers (like dropout and batch normalization) behave differently during training versus evaluation. \
+
+Optimizer Construction: \
+- The optimizer is created using Stochastic Gradient Descent (SGD) with a learning rate of 0.005, momentum of 0.9, and weight decay for regularization (also known as [L2 regularisation](https://arxiv.org/pdf/2310.04415)). \
+- params filters the model's parameters to include only those that require gradients (trainable parameters). \
+
+Learning Rate Scheduler: \
+- A learning rate scheduler (StepLR) is initialized, which reduces the learning rate by a factor of gamma (0.1) every step_size epochs (3 epochs in this case). This helps improve convergence as training progresses. \
+
+Epoch Loop: \
+- The outer loop iterates over the number of specified epochs (num_epochs). \
+
+Training for One Epoch: \
+- train_one_epoch(...) is a function from [engine.py](../src/torchvision_deps/engine.py) that handles the training logic for one epoch. It processes batches from the data_loader, computes losses, and updates model weights. \
+- The print_freq parameter controls how often training progress is printed (every 10 iterations). \
+
+Logging Loss: \
+- The average loss for the epoch is extracted from metric_logger, which tracks various metrics during training. \
+
+Checkpoint Saving: \
+- After each epoch, a checkpoint is saved using the save_checkpoint function. This allows for resuming from the last epoch in case of interruption. \
+
+Metrics Plotting: \
+- The function plot_eval_metrics is called to visualize training losses over epochs. \
+
+Learning Rate Update: \
+- After the epoch, the learning rate is updated according to the scheduler. \
+
+Return Values: \
+- The function returns the final epoch number (adjusted for any precedent epochs) and the list of training losses. \
+
+#### Load a model from a .pth file:
+```{python}
+def load_model(save_dir: str, num_classes: int, model_file_name: str):
+    model, preprocess = get_model_instance_object_detection(num_classes)
+    checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer = model.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    return model, optimizer, epoch
+```
+**Breakdown:** \
+- Loads a model from a .pth file. See the pytorch documentation [here](https://pytorch.org/tutorials/beginner/saving_loading_models.html). \
+- The weights and biases of a model are accessed by model.parameters(). A state_dict is a dictionary object that maps each layer to its parameter tensor. Both the model and optimiser have state_dicts, and both are saved by the save_checkpoint helper function. \
+- Returns the model, optimizer and epoch. \
+
+#### Evaluate a model's performance after training:
+```{python}
+def evaluate_model(model, data_loader_test: torch.utils.data.DataLoader, device: torch.cuda.device): 
+    val_metrics = []
+    model.eval()
+
+    coco_evaluator = evaluate(model, data_loader_test, device=device)
+        
+    # Extract evaluation metrics
+    eval_stats = coco_evaluator.coco_eval['bbox'].stats
+    val_metrics.append(eval_stats)
+    return val_metrics
+```
+**Breakdown:** \
+- Sets the model to evaluation mode using model.eval(), which alters the behavior of certain layers. \
+    - In training mode, the model expects input tensors (images) and targets (list of dictionary containing bounding boxes [N, 4], with vertices in the format [x1, y1, x2, y2] and class labels in the format Int64Tensor[N] where N is the number of bounding boxes in a given image, or the number of distinct classes, respectively). \
+- Currently using [coco_eval](../src/torchvision_deps/). \
+- See device class docs [here](https://pytorch.org/docs/stable/generated/torch.cuda.device.html) \
+- Makes a call to [engine's](../src/torchvision_deps/engine.py) evaluator() to perform COCO-style evaluation on the test dataset, shown below: \
+```{python}
+@torch.inference_mode()
+def evaluate(model, data_loader, device):
+    n_threads = torch.get_num_threads()
+    # FIXME remove this and make paste_masks_in_image run on the GPU
+    torch.set_num_threads(1)
+    cpu_device = torch.device("cpu")
+    model.eval()
+    metric_logger = utils.MetricLogger(delimiter="  ") # MetricLogger: https://pytorch.org/tnt/stable/utils/generated/torchtnt.utils.loggers.MetricLogger.html
+    header = "Test:"
+
+    coco = get_coco_api_from_dataset(data_loader.dataset)
+    iou_types = _get_iou_types(model)
+    coco_evaluator = CocoEvaluator(coco, iou_types)
+
+    for images, targets in metric_logger.log_every(data_loader, 100, header):
+        images = list(img.to(device) for img in images)
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        model_time = time.time()
+        outputs = model(images)
+
+        outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+        model_time = time.time() - model_time
+
+        res = {target["image_id"]: output for target, output in zip(targets, outputs)}
+        evaluator_time = time.time()
+        coco_evaluator.update(res)
+        evaluator_time = time.time() - evaluator_time
+        metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
+
+    # gather the stats from all processes
+    metric_logger.synchronize_between_processes()
+    print("Averaged stats:", metric_logger)
+    coco_evaluator.synchronize_between_processes()
+
+    # accumulate predictions from all images
+    coco_evaluator.accumulate()
+    coco_evaluator.summarize()
+    torch.set_num_threads(n_threads)
+    return coco_evaluator
+```
+- COCO provides thorough documentation [here](https://cocodataset.org/#detection-eval).
+- coco_evaluator.summarize() computes Average Precision (AP), AP Across Scales, Average Recall (AR), AR Across Scales (see a dicussion of these metrics [here](https://blog.zenggyu.com/posts/en/2018-12-16-an-introduction-to-evaluation-metrics-for-object-detection/index.html)).
+
+#### Using PyTorch hooks to get backbone feature maps:
+```{python}
+def get_feature_maps(model, input_image, target_layer_name: torch.nn):
+    feature_maps = {} # stores activations passed to forward_hook
+    
+    def hook_fn(module, input, output):
+        feature_maps[module] = output.detach()
+    return hook_fn # calls handle.remove() to remove the added hook
+    
+    # Register hooks for the layers to be visualised
+    for name, module in model.backbone.named_modules():
+        if isinstance(module, target_layer_name): # type examples: nn.Conv2d, nn.BatchNorm2d, nn.ReLU
+            module.register_forward_hook(hook_fn(module))
+    
+    # Forward pass
+    with torch.no_grad(): # disables loss gradient calculation: https://discuss.pytorch.org/t/with-torch-no-grad/130146
+        model([input_image])
+    
+    return feature_maps
+```
+**Breakdown:** \
+- In order to extract intermediate activations from model layers, PyTorch provides 'hooks'. [Pytorch documentation on hooks](https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.register_forward_hook) is quite sparse, but [this](https://web.stanford.edu/~nanbhas/blog/forward-hooks-pytorch/) blog is quite useful. \
+- Gets the feature maps for every target layer (target_layer_name) in each named module in the model's backbone (e.g., 'Sequential', 'Bottleneck'). Target layers are documented [here](https://pytorch.org/docs/stable/nn.html#convolution-layers). \
+
+
+#### Plot feature maps:
+```{python}
+def visualize_feature_maps(feature_maps, num_features=64):
+    for layer, feature_map in feature_maps.items():
+        # Get the first image in the batch
+        feature_map = feature_map[0]
+        
+        # Plot up to num_features feature maps
+        num_features = min(feature_map.size(0), num_features)
+        
+        fig, axs = plt.subplots(8, 8, figsize=(20, 20))
+        fig.suptitle(f'Feature Maps for Layer: {layer}')
+        
+        for i in range(num_features):
+            ax = axs[i // 8, i % 8]
+            ax.imshow(feature_map[i].cpu(), cmap='gray')
+            ax.axis('off')
+        
+        plt.tight_layout()
+        plt.show()
+```
+
+**Breakdown:** \
+- This function takes the feature maps collected from the get_feature_maps function and visualizes them. \
+- It plots up to num_features from each layer’s output, providing visual insights into what features the model is learning at different levels.
+
+#### Superimpose and plot bounding boxes on image:
+```{python}
+def plot_prediction(model, dataset, device, index, save_dir: str):
+    img, target = dataset[index]
+    num_epochs = 1
+    print_freq = 10  
+
+    model = load_model(save_dir)
+    with torch.no_grad():
+        image = img
+        image = image[:3, ...].to(device)
+        predictions = model([image, ])
+        pred = predictions[0]
+
+    image = image[:3, ...]
+    pred_boxes = pred["boxes"].long()
+    output_image = draw_bounding_boxes(image, pred_boxes, colors="red")
+    plt.figure(figsize=(12, 12))
+    plt.imshow(output_image.permute(1, 2, 0))
+    plt.savefig(f'{index}.png', bbox_inches='tight') # tight removes whitespace
+```
+**Breakdown:** \
+- Loads a specific image from the dataset and runs it through the model to get predictions.\
+- Superimposes the predicted bounding boxes on the original image (as a red outlined bounding box) and visualises the result. \
+
+#### Plot evaluation metrics:
+```{python}
+def plot_eval_metrics(eval_metrics, epoch):
+    plt.figure(figsize=(15, 10))
+    
+   # # Plot training loss
+   # plt.subplot(2, 2, 1)
+   # plt.plot(train_losses, label='Train Loss')
+   # plt.title('Training Loss over epochs')
+   # plt.xlabel('Epoch')
+   # plt.ylabel('Loss')
+   # plt.legend()
+    
+    # Plot mAP@[0.5:0.95]
+    plt.subplot(2, 2, 2)
+    map_values = [metrics[0] for metrics in eval_metrics]
+    plt.plot(map_values, label='mAP@[0.5:0.95]')
+    plt.title('mAP@[0.5:0.95] over epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('mAP')
+    plt.legend()
+    
+    # Plot mAP@0.5
+    plt.subplot(2, 2, 3)
+    map50_values = [metrics[1] for metrics in eval_metrics]
+    plt.plot(map50_values, label='mAP@0.5')
+    plt.title('mAP@0.5 over epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('mAP')
+    plt.legend()
+    
+    # Plot mAR@[0.5:0.95]
+    plt.subplot(2, 2, 4)
+    mar_values = [metrics[8] for metrics in eval_metrics]
+    plt.plot(mar_values, label='mAR@[0.5:0.95]')
+    plt.title('mAR@[0.5:0.95] over epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('mAR')
+    plt.legend()
+    
+    plt.tight_layout()
+    plt.savefig(f'training_metrics_epoch_{epoch}.png')
+    plt.close()
+
+```
+**Breakdown:** \
+- This function visualizes the evaluation metrics (mean Average Precision (mAP) and mean Average Recall (mAR)) over epochs. \
+- The results are plotted for easy comparison, helping to analyze the training process and the model's learning behavior over time. \
+
+## Debugging 'helper_training_functions' by Implementation in a Script:
+
+Having written the code necessary to instantiate, train, and evaluate a ResNet50 model, I need to evaluate its performance over several epochs. This will help to validate the code functions as intended, and to guide future development. \
+
+Here, I attempt to setup, train, and evaluate a Resnet50 Faster R-CNN model for 10 epochs - using src/Plate_Image_Dataset.py and src/helper_training_functions.py - then evaluate its mean average precision and recall, to be visualised in a line graph. \
+
+The implementation focuses on validating the core functionality of the object detection pipeline before scaling up to full training runs. \
+
+This script uses code from the following src files: \
+- src/[Plate_Image_Dataset.py](../src/plate_detect/Plate_Image_Dataset.py) - custom class that handles storing and accessing images and their corresponding bounding box vertices. \
+- src/[helper_training_functions.py](../src/plate_detect/helper_training_functions.py) - a group of useful helper functions I've written. For example, 'get_model_instance_object_detection' should return a [ResNet50](https://pytorch.org/hub/pytorch_vision_resnet/) backbone ([ImageNet1K_V2 weights](https://pytorch.org/vision/0.18/models/generated/torchvision.models.resnet50.html#:~:text=By%20default%2C%20no%20pre%2Dtrained%20weights%20are%20used.)), with a Region Proposal Network, as well as classifier and bounding box regression heads. 
+
+It may also be helpful to visualise the model architecture. There are libraries for this, one of which is '[pytorchviz](https://github.com/szagoruyko/pytorchviz)'. If useful, I will create such a script [here](docs/scripts/inspect_architecture.qmd). \
+
+For reference, here is a useful [pytorch tutorial](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html). \
+ 
+### Programme Overview:
+
+#### Imports:
+```{python}
+from plate_detect import Plate_Image_Dataset, helper_training_functions
+import torch
+from torchvision.transforms.v2 import functional as F
+from pathlib import Path
+from typing import Dict, Union
+from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2, FastRCNNPredictor, FasterRCNN_ResNet50_FPN_V2_Weights
+from torchvision.transforms import v2 as T
+import torchvision_deps.T_and_utils.utils as utils
+from torchvision_deps.engine import train_one_epoch, evaluate 
+import os
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import numpy as np
+import PIL
+from torchvision.utils import draw_bounding_boxes
+from torchvision.io import read_image
+from torch import nn
+```
+**Notes:** when running on the cluster, change any import statements for packages defined within the project directory (see [src](../src/)). Here is an example:
+```{python}
+#| eval: false
+from src import Plate_Image_Dataset, helper_training_functions
+# to...
+from SC_plate_detect.plate_detect import PLate_Image_Dataset, helper_training_functions
+
+```
+
+#### Setting up directories and instantiating model...
+```{python}
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+project_dir_root: Path= Path.cwd() # 'SC_TSL_15092024_Plate_Detect/' type PosixPath for UNIX, WindowsPath for windows...
+print(f'Project root directory: {str(project_dir_root)}')
+
+annotations_file: Path = project_dir_root.parents[0].joinpath('lib', 'labels.csv')
+print(f'Training labels csv file: {annotations_file}')
+
+img_dir: Path= project_dir_root.parents[0].joinpath('raw', 'positives')  # 'SC_TSL_15092024_Plate_Detect/train/images/positives/' on UNIX systems
+print(f'Training dataset directory: {img_dir}')
+
+num_class = 2 # plate or background
+# creates resnet50 v2 faster r cnn model with new head for class classification
+model, preprocess = helper_training_functions.get_model_instance_object_detection(num_class)
+# move model to the right device
+model.to(device)
+```
+**Breakdown:** \
+- Uses 'Compute Unified Device Architecture' ([CUDA](https://blogs.nvidia.com/blog/what-is-cuda-2/)) if available, falls back to CPU. \
+- Initializes ResNet50 Faster R-CNN with pretrained weights. \
+- 'preprocess' stores the input data transforms that take place just before the forward pass through the network. In this case, preprocess converts Tensor image, PIL image, or NumPy ndarray types into FloatTensor and scales pixel intensities in range [0.,1.] \
+
+#### Instantiating Plate_Image_Dataset class and creating training and validation subsets...
+```{python}
+dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
+        img_dir=str(img_dir), 
+        annotations_file=str(annotations_file),
+        transforms=preprocess, 
+        )
+
+# split the dataset in train and test set
+dataset_size = len(dataset)
+validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
+indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
+
+dataset_validation = torch.utils.data.Subset(dataset, indices[-validation_size:])
+dataset_train = torch.utils.data.Subset(dataset, indices[:-validation_size])
+```
+**Breakdown:** \
+- Plate_Image_Dataset is a custom dataset class used to handle parsing the csv file for bounding box vertices, associating them with the correct image using a dictionary, and handling retrieval of this information. \
+- In order to create validation and training subsets of the positive samples (i.e., the images *with* at least one plate labelled), I created a randomly arranged list of indices (where len(indices) == the number of samples in the dataset). The validation subset size is equal to 20% of the superset, or 50 samples, whichever is smallest. When I implement dataset augmentation I will scale this up. \
+
+#### Instantiating Pytorch DataLoaders for train and validation subsets...
+```{python}
+data_loader = torch.utils.data.DataLoader(
+    dataset_train,
+    batch_size=1,
+    shuffle=True,
+    collate_fn=utils.collate_fn
+)
+
+data_loader_test = torch.utils.data.DataLoader(
+    dataset_validation,
+    batch_size=1,
+    shuffle=False,
+    collate_fn=utils.collate_fn
+)
+```
+**Breakdown:** \
+- See [here](https://pytorch.org/docs/stable/data.html) Pytorch's documentation for DataLoader. DataLoader fetches and collates together individual samples into batches - i.e., it acts as a sampler. It does so by squeezing on a batch dimension (typically the first) to Tensors. It also provides an iterable over the given dataset. \
+- In this case, the Image_Plate_Dataset class is a map-style dataset, as it implements __getitem__() and __len__(), and stores samples with their associated labels and metadata at a shared index. \
+- If shuffle == True, data is reshuffled at every epoch. \
+
+#### Calling train, evaluate, and plot helper functions...
+```{python}
+save_dir = 'results'
+num_epochs = 1
+precedent_epoch = 0
+
+epoch, loss_metrics = helper_training_functions.train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
+
+eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test,device)
+
+helper_training_functions.plot_eval_metrics(eval_metrics, epoch)
+
+
+print("\n -end-")
+
+```
+**Breakdown:** \
+- Brief overview: \
+    1. Training function handles: \
+        - Optimisation using [SGD with momentum](https://towardsdatascience.com/stochastic-gradient-descent-with-momentum-a84097641a5d)  \
+        - Learning rate scheduling \
+        - Checkpoint saving \
+        - Loss tracking \
+    2. Evaluation produces:  \
+        - Mean Average Precision (mAP) \
+        - Mean Average Recall (mAR) \
+        - Performance metrics across IoU thresholds \
+    3. Visualisation plot includes: \
+        - Training loss curves (currently commented out...) \
+        - Precision and recall metrics \
+- *Note* I have only set it to train for 1 epoch here just to show the output. I need to train for longer on cluster. \
+
+### Debugging 'plot_eval_metrics'
+
+Execution of the previous block of code produced an error pertaining to the plt_eval_metrics function in 'helper_training_functions'. Training seemed to complete 'successfully' (without any overt error message), as shown by the standard output:
+```{bash}
+#| code-fold: true
+----- stdout -----
+Epoch: [0]  [  0/445]  eta: 3:16:15  lr: 0.000016  loss: 12.4731 (12.4731)  
+loss_classifier: 0.6946 (0.6946)  loss_box_reg: 0.0014 (0.0014)  
+loss_objectness: 0.5575 (0.5575)  loss_rpn_box_reg: 11.2197 (11.2197)  
+time: 26.4628  data: 0.0658
+----- stdout -----
+Epoch: [0]  [ 10/445]  eta: 3:04:58  lr: 0.000129  loss: 12.2818 (12.2796)  
+loss_classifier: 0.6680 (0.6509)  loss_box_reg: 0.0014 (0.0016)  
+loss_objectness: 0.5165 (0.4319)  loss_rpn_box_reg: 11.2103 (11.1952)  
+time: 25.5133  data: 0.0331
+----- stdout -----
+Epoch: [0]  [ 20/445]  eta: 2:56:12  lr: 0.000241  loss: 11.9741 (11.9625)  
+loss_classifier: 0.5031 (0.4939)  loss_box_reg: 0.0010 (0.0014)  
+loss_objectness: 0.1025 (0.2652)  loss_rpn_box_reg: 11.2047 (11.2020)  
+time: 24.7964  data: 0.0347
+----- stdout -----
+Epoch: [0]  [ 30/445]  eta: 2:49:23  lr: 0.000354  loss: 11.3177 (11.6900)  
+loss_classifier: 0.1428 (0.3636)  loss_box_reg: 0.0008 (0.0014)  
+loss_objectness: 0.0437 (0.1921)  loss_rpn_box_reg: 11.0751 (11.1330)  
+time: 23.9285  data: 0.0389
+----- stdout -----
+Epoch: [0]  [ 40/445]  eta: 2:46:09  lr: 0.000466  loss: 10.9000 (11.4590)  
+loss_classifier: 0.0464 (0.2834)  loss_box_reg: 0.0008 (0.0013)  
+loss_objectness: 0.0347 (0.1553)  loss_rpn_box_reg: 10.7784 (11.0190)  
+time: 24.3416  data: 0.0362
+----- stdout -----
+Epoch: [0]  [ 50/445]  eta: 2:42:53  lr: 0.000579  loss: 10.1130 (10.8375)  
+loss_classifier: 0.0280 (0.2326)  loss_box_reg: 0.0012 (0.0014)  
+loss_objectness: 0.0291 (0.1330)  loss_rpn_box_reg: 10.0758 (10.4705)  
+time: 25.1325  data: 0.0359
+----- stdout -----
+Epoch: [0]  [ 60/445]  eta: 2:37:46  lr: 0.000691  loss: 5.4877 (9.7458)  
+loss_classifier: 0.0184 (0.1970)  loss_box_reg: 0.0017 (0.0015)  
+loss_objectness: 0.0268 (0.1215)  loss_rpn_box_reg: 5.4460 (9.4258)  time: 
+24.5357  data: 0.0356
+----- stdout -----
+Epoch: [0]  [ 70/445]  eta: 2:33:04  lr: 0.000804  loss: 2.9799 (8.7480)  
+loss_classifier: 0.0132 (0.1709)  loss_box_reg: 0.0012 (0.0014)  
+loss_objectness: 0.0268 (0.1124)  loss_rpn_box_reg: 2.9488 (8.4633)  time: 
+23.8520  data: 0.0346
+----- stdout -----
+Epoch: [0]  [ 80/445]  eta: 2:28:37  lr: 0.000916  loss: 1.8505 (7.8749)  
+loss_classifier: 0.0090 (0.1509)  loss_box_reg: 0.0005 (0.0013)  
+loss_objectness: 0.0169 (0.1005)  loss_rpn_box_reg: 1.8392 (7.6221)  time: 
+23.9480  data: 0.0344
+----- stdout -----
+Epoch: [0]  [ 90/445]  eta: 2:24:38  lr: 0.001029  loss: 1.8975 (7.3354)  
+loss_classifier: 0.0071 (0.1350)  loss_box_reg: 0.0003 (0.0012)  
+loss_objectness: 0.0081 (0.0901)  loss_rpn_box_reg: 1.8844 (7.1090)  time: 
+24.2811  data: 0.0355
+----- stdout -----
+Epoch: [0]  [100/445]  eta: 2:20:27  lr: 0.001141  loss: 2.8099 (6.9393)  
+loss_classifier: 0.0071 (0.1224)  loss_box_reg: 0.0002 (0.0011)  
+loss_objectness: 0.0056 (0.0844)  loss_rpn_box_reg: 2.7990 (6.7314)  time: 
+24.4172  data: 0.0355
+----- stdout -----
+Epoch: [0]  [110/445]  eta: 2:16:03  lr: 0.001254  loss: 2.2265 (6.4966)  
+loss_classifier: 0.0054 (0.1118)  loss_box_reg: 0.0003 (0.0011)  
+loss_objectness: 0.0048 (0.0777)  loss_rpn_box_reg: 2.2155 (6.3060)  time: 
+24.0187  data: 0.0361
+----- stdout -----
+Epoch: [0]  [120/445]  eta: 2:11:50  lr: 0.001366  loss: 1.9435 (6.1239)  
+loss_classifier: 0.0048 (0.1030)  loss_box_reg: 0.0003 (0.0010)  
+loss_objectness: 0.0019 (0.0715)  loss_rpn_box_reg: 1.9376 (5.9484)  time: 
+23.8897  data: 0.0357
+----- stdout -----
+Epoch: [0]  [130/445]  eta: 2:07:35  lr: 0.001479  loss: 1.7308 (5.7787)  
+loss_classifier: 0.0043 (0.0954)  loss_box_reg: 0.0003 (0.0010)  
+loss_objectness: 0.0030 (0.0666)  loss_rpn_box_reg: 1.7195 (5.6157)  time: 
+23.9366  data: 0.0331
+----- stdout -----
+Epoch: [0]  [140/445]  eta: 2:03:15  lr: 0.001591  loss: 1.5541 (5.4746)  
+loss_classifier: 0.0028 (0.0889)  loss_box_reg: 0.0002 (0.0009)  
+loss_objectness: 0.0042 (0.0630)  loss_rpn_box_reg: 1.5190 (5.3218)  time: 
+23.7006  data: 0.0338
+----- stdout -----
+Epoch: [0]  [150/445]  eta: 1:59:03  lr: 0.001704  loss: 1.2306 (5.1811)  
+loss_classifier: 0.0024 (0.0831)  loss_box_reg: 0.0002 (0.0009)  
+loss_objectness: 0.0038 (0.0591)  loss_rpn_box_reg: 1.2248 (5.0381)  time: 
+23.6403  data: 0.0338
+----- stdout -----
+Epoch: [0]  [160/445]  eta: 1:54:58  lr: 0.001816  loss: 1.0814 (4.9265)  
+loss_classifier: 0.0018 (0.0781)  loss_box_reg: 0.0002 (0.0008)  
+loss_objectness: 0.0020 (0.0557)  loss_rpn_box_reg: 1.0769 (4.7919)  time: 
+23.8936  data: 0.0340
+----- stdout -----
+Epoch: [0]  [170/445]  eta: 1:50:45  lr: 0.001929  loss: 1.1236 (4.7317)  
+loss_classifier: 0.0015 (0.0736)  loss_box_reg: 0.0001 (0.0008)  
+loss_objectness: 0.0017 (0.0525)  loss_rpn_box_reg: 1.1205 (4.6048)  time: 
+23.8013  data: 0.0313
+----- stdout -----
+Epoch: [0]  [180/445]  eta: 1:46:35  lr: 0.002041  loss: 1.3348 (4.5468)  
+loss_classifier: 0.0013 (0.0696)  loss_box_reg: 0.0002 (0.0008)  
+loss_objectness: 0.0007 (0.0497)  loss_rpn_box_reg: 1.3297 (4.4268)  time: 
+23.5565  data: 0.0266
+----- stdout -----
+Epoch: [0]  [190/445]  eta: 1:42:29  lr: 0.002154  loss: 1.0461 (4.3523)  
+loss_classifier: 0.0011 (0.0660)  loss_box_reg: 0.0003 (0.0008)  
+loss_objectness: 0.0008 (0.0474)  loss_rpn_box_reg: 1.0428 (4.2382)  time: 
+23.6894  data: 0.0281
+----- stdout -----
+Epoch: [0]  [200/445]  eta: 1:38:22  lr: 0.002266  loss: 0.8895 (4.1987)  
+loss_classifier: 0.0010 (0.0628)  loss_box_reg: 0.0004 (0.0007)  
+loss_objectness: 0.0012 (0.0451)  loss_rpn_box_reg: 0.8852 (4.0901)  time: 
+23.7231  data: 0.0375
+----- stdout -----
+Epoch: [0]  [210/445]  eta: 1:34:14  lr: 0.002379  loss: 0.9960 (4.0410)  
+loss_classifier: 0.0011 (0.0599)  loss_box_reg: 0.0003 (0.0007)  
+loss_objectness: 0.0005 (0.0430)  loss_rpn_box_reg: 0.9941 (3.9374)  time: 
+23.5388  data: 0.0365
+----- stdout -----
+Epoch: [0]  [220/445]  eta: 1:30:10  lr: 0.002491  loss: 0.8399 (3.9289)  
+loss_classifier: 0.0011 (0.0572)  loss_box_reg: 0.0004 (0.0007)  
+loss_objectness: 0.0009 (0.0412)  loss_rpn_box_reg: 0.8378 (3.8298)  time: 
+23.5903  data: 0.0301
+----- stdout -----
+Epoch: [0]  [230/445]  eta: 1:54:43  lr: 0.002604  loss: 1.2622 (3.8144)  
+loss_classifier: 0.0009 (0.0548)  loss_box_reg: 0.0003 (0.0007)  
+loss_objectness: 0.0009 (0.0395)  loss_rpn_box_reg: 1.2600 (3.7194)  time: 
+115.9584  data: 0.0419
+----- stdout -----
+Epoch: [0]  [240/445]  eta: 2:06:24  lr: 0.002716  loss: 1.2218 (3.7280)  
+loss_classifier: 0.0007 (0.0525)  loss_box_reg: 0.0001 (0.0007)  
+loss_objectness: 0.0009 (0.0380)  loss_rpn_box_reg: 1.2207 (3.6368)  time: 
+180.1180  data: 0.0575
+----- stdout -----
+Epoch: [0]  [250/445]  eta: 2:16:37  lr: 0.002829  loss: 1.8142 (3.6736)  
+loss_classifier: 0.0007 (0.0505)  loss_box_reg: 0.0001 (0.0007)  
+loss_objectness: 0.0007 (0.0365)  loss_rpn_box_reg: 1.8125 (3.5859)  time: 
+157.8001  data: 0.0509
+----- stdout -----
+Epoch: [0]  [260/445]  eta: 2:07:27  lr: 0.002941  loss: 1.6318 (3.5919)  
+loss_classifier: 0.0006 (0.0486)  loss_box_reg: 0.0001 (0.0006)  
+loss_objectness: 0.0005 (0.0351)  loss_rpn_box_reg: 1.6298 (3.5075)  time: 
+93.6587  data: 0.0339
+----- stdout -----
+Epoch: [0]  [270/445]  eta: 1:58:35  lr: 0.003054  loss: 1.3040 (3.5010)  
+loss_classifier: 0.0005 (0.0468)  loss_box_reg: 0.0001 (0.0006)  
+loss_objectness: 0.0003 (0.0339)  loss_rpn_box_reg: 1.3028 (3.4198)  time: 
+23.2967  data: 0.0278
+----- stdout -----
+Epoch: [0]  [280/445]  eta: 1:49:59  lr: 0.003166  loss: 1.6197 (3.4629)  
+loss_classifier: 0.0005 (0.0451)  loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0011 (0.0330)  loss_rpn_box_reg: 1.6135 (3.3841)  time: 
+22.5025  data: 0.0291
+----- stdout -----
+Epoch: [0]  [290/445]  eta: 1:41:48  lr: 0.003279  loss: 1.9159 (3.4018)  
+loss_classifier: 0.0005 (0.0436)  loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0011 (0.0319)  loss_rpn_box_reg: 1.9139 (3.3257)  time: 
+22.4999  data: 0.0285
+----- stdout -----
+Epoch: [0]  [300/445]  eta: 1:33:54  lr: 0.003391  loss: 1.6265 (3.3566)  
+loss_classifier: 0.0004 (0.0422)  loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0003 (0.0309)  loss_rpn_box_reg: 1.6257 (3.2830)  time: 
+22.7762  data: 0.0256
+----- stdout -----
+Epoch: [0]  [310/445]  eta: 1:26:02  lr: 0.003504  loss: 1.3157 (3.2814)  
+loss_classifier: 0.0004 (0.0408)  loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0003 (0.0300)  loss_rpn_box_reg: 1.3151 (3.2099)  time: 
+21.2467  data: 0.0233
+----- stdout -----
+Epoch: [0]  [320/445]  eta: 1:18:02  lr: 0.003616  loss: 1.5974 (3.2630)  
+loss_classifier: 0.0004 (0.0396)  loss_box_reg: 0.0003 (0.0006)  
+loss_objectness: 0.0015 (0.0292)  loss_rpn_box_reg: 1.5681 (3.1937)  time: 
+16.4571  data: 0.0221
+----- stdout -----
+Epoch: [0]  [330/445]  eta: 1:10:23  lr: 0.003729  loss: 2.0970 (3.2195)  
+loss_classifier: 0.0004 (0.0384)  loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0004 (0.0283)  loss_rpn_box_reg: 2.0959 (3.1522)  time: 
+13.1626  data: 0.0214
+----- stdout -----
+Epoch: [0]  [340/445]  eta: 1:03:03  lr: 0.003841  loss: 1.4664 (3.1841)  
+loss_classifier: 0.0003 (0.0373)  loss_box_reg: 0.0003 (0.0006)  
+loss_objectness: 0.0003 (0.0275)  loss_rpn_box_reg: 1.4655 (3.1187)  time: 
+13.1292  data: 0.0205
+----- stdout -----
+Epoch: [0]  [350/445]  eta: 0:56:01  lr: 0.003954  loss: 1.4350 (3.1474)  
+loss_classifier: 0.0005 (0.0363)  loss_box_reg: 0.0004 (0.0006)  
+loss_objectness: 0.0005 (0.0270)  loss_rpn_box_reg: 1.4344 (3.0836)  time: 
+13.1202  data: 0.0215
+----- stdout -----
+Epoch: [0]  [360/445]  eta: 0:49:15  lr: 0.004066  loss: 2.5771 (3.1577)  
+loss_classifier: 0.0004 (0.0353)  loss_box_reg: 0.0007 (0.0006)  
+loss_objectness: 0.0005 (0.0263)  loss_rpn_box_reg: 2.5583 (3.0956)  time: 
+13.1855  data: 0.0222
+----- stdout -----
+Epoch: [0]  [370/445]  eta: 0:42:44  lr: 0.004179  loss: 3.8424 (3.1623)  
+loss_classifier: 0.0002 (0.0343)  loss_box_reg: 0.0009 (0.0006)  
+loss_objectness: 0.0005 (0.0256)  loss_rpn_box_reg: 3.8294 (3.1018)  time: 
+13.3834  data: 0.0228
+----- stdout -----
+Epoch: [0]  [380/445]  eta: 0:36:26  lr: 0.004291  loss: 1.6415 (3.1093)  
+loss_classifier: 0.0002 (0.0334)  loss_box_reg: 0.0008 (0.0006)  
+loss_objectness: 0.0007 (0.0251)  loss_rpn_box_reg: 1.6396 (3.0502)  time: 
+13.2702  data: 0.0247
+----- stdout -----
+Epoch: [0]  [390/445]  eta: 0:30:21  lr: 0.004404  loss: 1.1593 (3.1042)  
+loss_classifier: 0.0002 (0.0326)  loss_box_reg: 0.0003 (0.0006)  
+loss_objectness: 0.0006 (0.0244)  loss_rpn_box_reg: 1.1582 (3.0466)  time: 
+13.0649  data: 0.0264
+----- stdout -----
+Epoch: [0]  [400/445]  eta: 0:24:27  lr: 0.004516  loss: 3.4072 (3.1247)  
+loss_classifier: 0.0002 (0.0318)  loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0006 (0.0239)  loss_rpn_box_reg: 3.3835 (3.0684)  time: 
+13.0817  data: 0.0261
+----- stdout -----
+Epoch: [0]  [410/445]  eta: 0:18:44  lr: 0.004629  loss: 3.0871 (3.0998)  
+loss_classifier: 0.0002 (0.0310)  loss_box_reg: 0.0003 (0.0006)  
+loss_objectness: 0.0006 (0.0233)  loss_rpn_box_reg: 3.0852 (3.0449)  time: 
+13.0341  data: 0.0262
+----- stdout -----
+Epoch: [0]  [420/445]  eta: 0:13:12  lr: 0.004741  loss: 2.1452 (3.0729)  
+loss_classifier: 0.0002 (0.0303)  loss_box_reg: 0.0003 (0.0006)  
+loss_objectness: 0.0006 (0.0228)  loss_rpn_box_reg: 2.1442 (3.0192)  time: 
+13.0322  data: 0.0264
+----- stdout -----
+Epoch: [0]  [430/445]  eta: 0:07:48  lr: 0.004854  loss: 1.3435 (3.0360)  
+loss_classifier: 0.0002 (0.0296)  loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0007 (0.0223)  loss_rpn_box_reg: 1.3427 (2.9836)  time: 
+13.1675  data: 0.0227
+----- stdout -----
+Epoch: [0]  [440/445]  eta: 0:02:34  lr: 0.004966  loss: 1.1867 (3.0013)  
+loss_classifier: 0.0002 (0.0289)  loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0007 (0.0219)  loss_rpn_box_reg: 1.1862 (2.9499)  time: 
+13.3361  data: 0.0213
+----- stdout -----
+Epoch: [0]  [444/445]  eta: 0:00:30  lr: 0.005000  loss: 1.3435 (2.9855)  
+loss_classifier: 0.0002 (0.0287)  loss_box_reg: 0.0001 (0.0005)  
+loss_objectness: 0.0006 (0.0217)  loss_rpn_box_reg: 1.3427 (2.9346)  time: 
+13.3004  data: 0.0221
+Epoch: [0] Total time: 3:47:38 (30.6933 s / it)
+```
+Standard error is as follows:
+```{bash}
+TypeError                                 Traceback (most recent call last)
+Cell In[5], line 5
+      2 num_epochs = 1
+      3 precedent_epoch = 0
+----> 5 epoch, loss_metrics = helper_training_functions.train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
+      7 eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test,device)
+      9 helper_training_functions.plot_eval_metrics(eval_metrics, epoch)
+
+File ~/Documents/My_Repos/SC_TSL_15092024_plate_detect/src/plate_detect/helper_training_functions.py:90, in train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
+     86 save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
+     89 # Plot and save the metrics
+---> 90 plot_eval_metrics(train_losses, epoch + precedent_epoch)
+     92 # Update the learning rate
+     93 lr_scheduler.step()
+
+File ~/Documents/My_Repos/SC_TSL_15092024_plate_detect/src/plate_detect/helper_training_functions.py:186, in plot_eval_metrics(eval_metrics, epoch)
+    176 # # Plot training loss
+    177 # plt.subplot(2, 2, 1)
+    178 # plt.plot(train_losses, label='Train Loss')
+   (...)
+    183  
+    184  # Plot mAP@[0.5:0.95]
+    185  plt.subplot(2, 2, 2)
+--> 186  map_values = [metrics[0] for metrics in eval_metrics]
+    187  plt.plot(map_values, label='mAP@[0.5:0.95]')
+    188  plt.title('mAP@[0.5:0.95] over epochs')
+
+TypeError: 'float' object is not subscriptable
+```
+
+Firstly, I will type- and shape-check the eval_metrics list. I will load the model from the .pth file saved from training for the sake of efficiency (no need to train again, as it did not produce the error and would unneccessarily waste time). 'load_model()' expects the save directory string of the .pth file, the number of classes (2: background, plate), and the model file name. It returns the model, optimizer, and epoch. I then pass the model to evaluate_model(). \
+
+```{python}
+model, optimizer, epoch = helper_training_functions.load_model('checkpoints/', 2, 'checkpoint_epoch_0')
+
+eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test, device)
+
+print(eval_metrics, '\n', shape(eval_metrics))
+
+#helper_training_functions.plot_eval_metrics(eval_metrics, epoch)
+
+print("\n -end-")
+```
+
+This produced an error when loading the model:
+```{bash}
+{
+	"name": "RuntimeError",
+	"message": "Error(s) in loading state_dict for FasterRCNN:
+\tMissing key(s) in state_dict: ... \"param_groups\". ",
+	"stack": "---------------------------------------------------------------------------
+RuntimeError                              Traceback (most recent call last)
+File /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/analyses/0002_functional_Faster_R-CNN.qmd:1
+----> 1 model, optimizer, epoch = helper_training_functions.load_model('checkpoints/', 2, 'checkpoint_epoch_0')
+      3 eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test,device)
+      5 print(eval_metrics, '\
+', shape(eval_metrics))
+
+File ~/Documents/My_Repos/SC_TSL_15092024_plate_detect/src/plate_detect/helper_training_functions.py:101, in load_model(save_dir, num_classes, model_file_name)
+     99 checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
+    100 model.load_state_dict(checkpoint['model_state_dict'])
+--> 101 optimizer = model.load_state_dict(checkpoint['optimizer_state_dict'])
+    102 epoch = checkpoint['epoch']
+    103 return model, optimizer, epoch
+
+File ~/Documents/My_Repos/SC_TSL_15092024_plate_detect/venv/lib/python3.12/site-packages/torch/nn/modules/module.py:2153, in Module.load_state_dict(self, state_dict, strict, assign)
+   2148         error_msgs.insert(
+   2149             0, 'Missing key(s) in state_dict: {}. '.format(
+   2150                 ', '.join(f'\"{k}\"' for k in missing_keys)))
+   2152 if len(error_msgs) > 0:
+-> 2153     raise RuntimeError('Error(s) in loading state_dict for {}:\
+\\t{}'.format(
+   2154                        self.__class__.__name__, \"\
+\\t\".join(error_msgs)))
+   2155 return _IncompatibleKeys(missing_keys, unexpected_keys)
+
+RuntimeError: Error(s) in loading state_dict for FasterRCNN:
+\tMissing key(s) in state_dict: \"backbone.body.conv1.weight\", ... \"roi_heads.box_predictor.bbox_pred.bias\". 
+\tUnexpected key(s) in state_dict: \"state\", \"param_groups\". "
+}
+```
+This error is relates to handling loading of the serialised optimiser object by the save function. While unneccessary for correcting the error with eval_metrics, now that is has popped up I will deal with it, as this function must correctly load the optimizer in instances where I want to recommence training from a saved checkpoint. \
+
+I modififed the load_model function according to [this](https://pytorch.org/tutorials/recipes/recipes/saving_and_loading_a_general_checkpoint.html) article. \
+
+First, the saved state_dict is [deserialised](https://learn.microsoft.com/en-us/dotnet/standard/serialization/) from the .pth file, then it is passed to load_state_dict. 'load_state_dict' expects a [torch.optim.Optimizer](https://pytorch.org/docs/stable/optim.html#torch.optim.Optimizer) object. In the previous load_model(), it gets a dict object. To solve this, I must call load_state_dict on the SGD optimizer. The optimizer should be initialised and returned by the get_model_instance_object_detection() function, but currently only the train() function initialises an optimizer. I think it would be best to isolate model and optimizer initialisation in the model getter. This way, there isn't a chance that the optimizer gets redefined at some point, causing strange behaviour.\
+
+This will require modifications to get_model_instance_object_detection(), load_model(), and train() as follows:\
+```{python}
+def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_fpn_v2:
+    # New weights with accuracy 80.858%
+    weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT # alias is .DEFAULT suffix, weights = None is random initialisation, box MAP 46.7, params, 43.7M, GFLOPS 280.37 https://github.com/pytorch/vision/pull/5763
+    model = fasterrcnn_resnet50_fpn_v2(weights=weights, box_score_thresh=0.0001)
+    preprocess = weights.transforms()
+    # finetuning pretrained model by transfer learning
+    # get num of input features for classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+
+    params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.SGD( # optimizer defined in model getter according to pytorch 'recipes'
+        params,
+        lr=0.005,
+        momentum=0.9,
+        weight_decay=0.0005
+    )
+    # replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_class)
+    return model, optimizer,preprocess
+```
+
+```{python}
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir, optimizer): 
+    model.train()
+    # Initialize lists to store metrics
+    train_losses = []
+    
+    # and a learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=3,
+        gamma=0.1
+    )
+
+    for epoch in range(num_epochs):
+    # train for one epoch, printing every 10 iterations
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+    
+    # Get the average loss for this epoch
+        epoch_loss = metric_logger.meters['loss'].global_avg
+        train_losses.append(epoch_loss)
+
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
+        
+        # Plot and save the metrics
+        plot_eval_metrics(train_losses, epoch + precedent_epoch)
+        
+        # Update the learning rate
+        lr_scheduler.step()
+
+    return num_epochs + precedent_epoch, train_losses
+
+```
+
+```{python}
+def load_model(save_dir: str, num_classes: int, model_file_name: str):
+    model, optimizer, preprocess = get_model_instance_object_detection(num_classes)
+    checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    return model, optimizer, epoch
+```
+After reimporting the revised plate_detect.helper_training_functions with the above modifications (see imports for this sub-section), I ran the following script:
+```{python}
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+project_dir_root: Path= Path.cwd() # 'SC_TSL_15092024_Plate_Detect/' type PosixPath for UNIX, WindowsPath for windows...
+print(f'Project root directory: {str(project_dir_root)}')
+
+annotations_file: Path = project_dir_root.parents[0].joinpath('lib', 'labels.csv')
+print(f'Training labels csv file: {annotations_file}')
+
+img_dir: Path= project_dir_root.parents[0].joinpath('raw', 'positives')  # 'SC_TSL_15092024_Plate_Detect/train/images/positives/' on UNIX systems
+print(f'Training dataset directory: {img_dir}')
+
+num_class = 2
+_, _, preprocess = helper_training_functions.get_model_instance_object_detection(num_class) # load_model already calls model getter, no need to store it here
+
+dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
+        img_dir=str(img_dir), 
+        annotations_file=str(annotations_file),
+        transforms=preprocess, 
+        )
+
+# split the dataset in train and test set
+dataset_size = len(dataset)
+validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
+indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
+
+dataset_validation = torch.utils.data.Subset(dataset, indices[-validation_size:])
+dataset_train = torch.utils.data.Subset(dataset, indices[:-validation_size])
+
+data_loader = torch.utils.data.DataLoader(
+    dataset_train,
+    batch_size=1,
+    shuffle=True,
+    collate_fn=utils.collate_fn
+)
+
+data_loader_test = torch.utils.data.DataLoader(
+    dataset_validation,
+    batch_size=1,
+    shuffle=False,
+    collate_fn=utils.collate_fn
+)
+# move model to the right device
+model.to(device)
+
+model, optimizer, epoch = helper_training_functions.load_model('checkpoints/', num_class, 'checkpoint_epoch_0')
+
+eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test, device)
+
+print(eval_metrics, '\n', len(eval_metrics))
+
+#helper_training_functions.plot_eval_metrics(eval_metrics, epoch)
+
+print("\n -end-")
+```
+... the evaluator now runs again! It may be sensible to tuck data_loader, data_loader_test, as well as validation and training subset and indice permutation lists, into load_model. With that being said, I'm conscious that the function signatures are huge, as well as their return statements. I don't think I should add to that. Further to this, implementation of these helper functions in different object detection contexts will likely be suited to different batching parameters based on variables like dataset size. For this reason, I think it's best load_model() handles loading the optimizer and model deserialisation and variable loading only. \
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+### Next step: Setup singularity container on the cluster and [train for 10 epochs for baseline performance assessment, using evaluation plot to guide revisions...](04_ResNet50_training.md)
