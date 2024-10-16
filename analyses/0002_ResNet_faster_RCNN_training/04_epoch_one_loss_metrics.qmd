@@ -15,7 +15,7 @@ To create plots from one epoch of training from analysis [03](02_helper_training
 #### Redirecting loss metrics of interest from [03_std_out.txt](results/03_std_out.txt)...
 Firstly, I used: \
 ```{bash}
-grep -o '.../445\|loss: .......\|loss_objectness: ......\|loss_rpn_box_reg: .......\|loss_classifier: results/stdout_ResNet_Training.txt > results/cleaned_output.txt
+grep -o '.../445\|loss: .......\|loss_objectness: ......\|loss_rpn_box_reg: .......\|loss_classifier:.......' results/stdout_ResNet_Training.txt > results/cleaned_output.txt
 ```
 
 #### Creating plots from [this tidier output](results/cleaned_output.txt)...
@@ -56,6 +56,6 @@ plt.ylabel('Loss')
 plt.yscale("log")
 plt.title('Loss Metrics Progression Through One Epoch')
 plt.legend()
-plt.grid(True)
+plt.grid(False)
 plt.show()
 ```
