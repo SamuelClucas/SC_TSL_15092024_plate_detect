@@ -221,7 +221,7 @@ def save_checkpoint(model, optimizer, epoch, save_dir):
 
 #### Training function:
 ::: {.callout-note collapse="true"}
-*Note:* This function uses train_one_epoch() from [engine.py](../src/torchvision_deps/engine.py) in torchvision_deps. I later modify this function, and so I define it locally prior to these modifications before *my* train function to preserve its development through time.
+*Note:* This function uses train_one_epoch() from [engine.py](../src/torchvision_deps/engine.py) in torchvision_deps. I may later modify this function, and so I define it locally prior to these modifications before *my* train function to preserve its development through time.
 ```{python}
 import math
 import sys
@@ -770,7 +770,7 @@ print("\n -end-")
         - Precision and recall metrics \
 - *Note* I have only set it to train for 1 epoch here just to show the output. I will train for longer on the cluster. Here, my focus is debugging the helper functions, not training the model. \
 
-### Debugging 'plot_eval_metrics'
+### Debugging 'plot_eval_metrics' and implementing 'plot_training_loss':
 
 Execution of the previous block of code produced an error pertaining to the plt_eval_metrics function in 'helper_training_functions'. 
 
@@ -1118,7 +1118,7 @@ def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_f
     )
     # replace the pre-trained head with a new one
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_class)
-    return model, optimizer,preprocess
+    return model, optimizer, preprocess
 ```
 
 ```{python}
@@ -1166,7 +1166,7 @@ def load_model(save_dir: str, num_classes: int, model_file_name: str):
 ```
 After the above modifications, I ran the following script:
 ```{python}
-model, optimizer, epoch = helper_training_functions.load_model('checkpoints/', num_class, 'checkpoint_epoch_0')
+model, optimizer, epoch = load_model('checkpoints/', num_class, 'checkpoint_epoch_0')
 
 eval_metrics = evaluate_model(model, data_loader_test, device)
 
@@ -1176,7 +1176,11 @@ print(eval_metrics, '\n', len(eval_metrics))
 
 print("\n -end-")
 ```
-... the evaluator now runs again! It may be sensible to tuck data_loader, data_loader_test, as well as validation and training subset and indice permutation lists, into load_model. With that being said, I'm conscious that the function signatures are huge, as well as their return statements. I don't think I should add to that. Further to this, implementation of these helper functions in different object detection contexts will likely be suited to different batching parameters based on variables like dataset size. For this reason, I think it's best load_model() handles loading the optimizer and model deserialisation and variable loading only. \
+... the evaluator now runs again! \
+It may be sensible to tuck data_loader, data_loader_test, as well as validation and training subset and indice permutation lists, into load_model. With that being said, I'm conscious that the function signatures are huge, as well as their return statements. I don't think I should add to that. Further to this, implementation of these helper functions in different object detection contexts will likely be suited to different batching parameters based on variables like dataset size. For this reason, I think it's best load_model() handles loading the optimizer and model deserialisation and variable loading only. \
+::: callout-note
+I just learned about *args and **kwargs. I think this could help cut down the complexity of the function signatures. 
+:::
 
 The standard out based on the helper_training_functions defined up to this point is:
 ```{bash}
@@ -1209,9 +1213,7 @@ IoU metric: bbox
 
  -end-
  ```
-
 This output is interesting. Firstly, the loss metrics are missing from eval_metrics, yet are output at the end of the previous section. This is because the evaluate_model() function returns only coco_evaluator's 'bbox' stats. I  will print coco_evaluator to see if the loss metrics are stored there:
-
 ```{python}
 def evaluate_model(model, data_loader_test,device):
     val_metrics = []
@@ -1232,29 +1234,246 @@ print(eval_metrics, '\n', len(eval_metrics))
 ```
 The CocoEvaluator class is defined in [torchvision_deps](../src/torchvision_deps/coco_eval.py). 
 
-I have realised numerous mistakes: \
+I have realised numerous changes are yet to be implemented: \
 - When defining plot_eval_metrics(), I drafted the code to plot the training loss metrics, but forgot I wanted to separate this into its own function. Currently train() makes a call to plot_eval_metrics. Instead I will define a plot_train_loss_metrics() function and make a call to that instead inside train(). \
 - Based on the print(eval_metrics) in the former code block, the array indexing in plot_eval_metrics needs to be adjusted (pertaining to the type error it currently produces). \
 - Currently, I'm trying to plot the average loss and eval metrics. While this would be okay if I were training for many epochs, that won't work when trying to create a line plot for one epoch's training. Instead, I want to plot the metrics as the training or evaluation happens. Currently I am using train_one_epoch() and evaluate() from [engine](../src/torchvision_deps/engine.py) in torchvision_deps. They use PyTorch's [MetricLogger](https://pytorch.org/tnt/stable/utils/generated/torchtnt.utils.loggers.MetricLogger.html) to store metrics, where 'log_every()' from [coco_eval](../src/torchvision_deps/coco_eval.py) is handling the rate printing of metrics as training/evaluating progresses through the epoch. I want to plot the data from log_every()'s standard output. I suspect this will require modification to either log_every or the metric loggers in engine. This discussion is helpful: https://discuss.pytorch.org/t/object-detection-fine-tuning-interpreting-printout-of-train-one-epoch/193496/2 \
 
+I realised the MetricLogger class is defined locally in [utils.py](../src/torchvision_deps/T_and_utils/utils.py). 'log_every()' is a method of MetricLogger. I want to avoid modifying dependency files as much as possible. \
 
+I realised I can just change the way I handle the metric logger returned from train_one_epoch in my train() function. Before I modify it, I want to retrain on a small batch (not the full epoch) to see print the metric logger, just to check that the granular progress through the epoch survives 'train_one_epoch': \ 
 
+```{python}
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir, optimizer): 
+    model.train()
+    # Initialize lists to store metrics
+    train_losses = []
+    
+    # and a learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=3,
+        gamma=0.1
+    )
 
+    for epoch in range(num_epochs):
+    # train for one epoch, printing every 10 iterations
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
 
+        for i, (k, v) in enumerate(metric_logger.meters.items()):
+            print(f'Key: {k} \t Value: {v}')
+    
+    # Get the average loss for this epoch
+        epoch_loss = metric_logger.meters['loss'].global_avg
+        train_losses.append(epoch_loss)
 
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
+        
+        # Plot and save the metrics
+        plot_eval_metrics(train_losses, epoch + precedent_epoch)
+        
+        # Update the learning rate
+        lr_scheduler.step()
 
+    return num_epochs + precedent_epoch, train_losses
+```
+Then execute the following script for a short training session, after which all keys in metric_logger are printed:
+```{python}
+model, optimizer, preprocess = get_model_instance_object_detection(2)
 
+dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
+        img_dir=str(img_dir), 
+        annotations_file=str(annotations_file),
+        transforms=preprocess, 
+        )
 
+# split the dataset in train and test set
+dataset_size = 20
+#validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
+indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
 
+#dataset_validation = torch.utils.data.Subset(dataset, indices[-validation_size:])
+dataset_train = torch.utils.data.Subset(dataset, indices[:])
 
+data_loader = torch.utils.data.DataLoader(
+    dataset_train,
+    batch_size=1,
+    shuffle=True,
+    collate_fn=utils.collate_fn
+)
 
+num_epochs = 1
+precedent_epoch = 0
+save_dir = 'results'
 
+epoch, loss_metrics = train(model, data_loader, None, device, num_epochs, precedent_epoch, save_dir, optimizer)
 
+print("\n -end-")
+```
+The keys in metric_logger.meters are 'loss, loss_classifier, loss_box_reg, loss_objectness, loss_rpn_box_reg'. 'train_one_epoch' overwrites the meters value throughout training by making a call to MetricLogger.update(). I will modify 'train_one_epoch.py' to store intra-epoch loss metrics in a dictionary of lists (this requires additional defaultdict import) and their associated key (e.g., intra_epoch_loss['loss_classififer'] = []):
 
+```{python}
+from collections import defaultdict # new import
+import math
+import sys
+import time
 
+import torch
+import torchvision.models.detection.mask_rcnn
+from torchvision_deps.T_and_utils import utils
+from torchvision_deps.coco_eval import CocoEvaluator
+from torchvision_deps.coco_utils import get_coco_api_from_dataset
 
+def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
+    model.train()
+    metric_logger = utils.MetricLogger(delimiter="  ")
+    metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
+    header = f"Epoch: [{epoch}]"
 
+    lr_scheduler = None
+    if epoch == 0:
+        warmup_factor = 1.0 / 1000
+        warmup_iters = min(1000, len(data_loader) - 1)
 
+        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer, start_factor=warmup_factor, total_iters=warmup_iters
+        )
+
+    for images, targets in metric_logger.log_every(data_loader, print_freq, header):
+        images = list(image.to(device) for image in images)
+        targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
+        with torch.cuda.amp.autocast(enabled=scaler is not None):
+            loss_dict = model(images, targets)
+            losses = sum(loss for loss in loss_dict.values())
+
+        # reduce losses over all GPUs for logging purposes
+        loss_dict_reduced = utils.reduce_dict(loss_dict)
+        losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+
+        loss_value = losses_reduced.item()
+
+        if not math.isfinite(loss_value):
+            print(f"Loss is {loss_value}, stopping training")
+            print(loss_dict_reduced)
+            sys.exit(1)
+
+        optimizer.zero_grad()
+        if scaler is not None:
+            scaler.scale(losses).backward()
+            scaler.step(optimizer)
+            scaler.update()
+        else:
+            losses.backward()
+            optimizer.step()
+
+        if lr_scheduler is not None:
+            lr_scheduler.step()
+
+        # --insertion here-- #
+        for i, (k, v) in enumerate(metric_logger.meters.items()):
+            intra_epoch_log = defaultdict(list)
+            intra_epoch_log = {'loss': [], 'loss_classifier': [], 'loss_box_reg': [], 'loss_objectness': [], 'loss_rpn_box_reg': []}
+            if k in intra_epoch_log:
+                intra_epoch_log[k].append(v)
+
+        metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
+        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+
+    return metric_logger, intra_epoch_log
+```
+
+ I will pass these to a plot_training_loss() helper function.
+
+```{python}
+def plot_training_loss(save_dir: str, epoch: int, **kwargs):
+    # the metrics are passed using list comprehension in train()
+    plt.figure(figsize=(10, 6))
+    plt.plot(progression, loss, label='Loss')
+    plt.plot(progression, loss_objectness, label='Loss Objectness')
+    plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
+    plt.plot(progression, loss_classifier, label='Loss Classifier')
+
+    plt.xlabel('Progression through Epoch')
+    plt.ylabel('Loss')
+    plt.yscale("log")
+    plt.title('Loss Metrics Progression Through One Epoch')
+    plt.legend()
+    plt.grid(False)
+    plt.show()
+    plt.savefig(f'{save_dir}/results/loss_metrics_epoch_{epoch}')
+```
+
+Now make a call to it in train() instead:
+```{python}
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir, optimizer): 
+    model.train()
+    # Initialize lists to store metrics
+    train_losses = []
+    
+    # and a learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=3,
+        gamma=0.1
+    )
+
+    for epoch in range(num_epochs):
+    # train for one epoch, printing every 10 iterations
+        metric_logger, intra_epoch_losses = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+
+        # plot loss throughout *this* epoch's training
+        plot_training_loss(save_dir, epoch, [(k, v) for (k, v) in enumerate(intra_epoch_losses.items())])     # <----- insertion here
+    
+    # Get the average loss for this epoch
+        epoch_loss = metric_logger.meters['loss'].global_avg
+        train_losses.append(epoch_loss)
+
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
+        
+        # Plot and save the metrics
+        plot_eval_metrics(train_losses, epoch + precedent_epoch)
+        
+        # Update the learning rate
+        lr_scheduler.step()
+
+    return num_epochs + precedent_epoch, train_losses
+```
+
+Now run the script, passing the project_dir_root created earlier instead of the save_dir to make sure that plots are saved in results/ which is now in the root of the project:
+
+```{python}
+model, optimizer, preprocess = get_model_instance_object_detection(2)
+
+dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
+        img_dir=str(img_dir), 
+        annotations_file=str(annotations_file),
+        transforms=preprocess, 
+        )
+
+# split the dataset in train and test set
+dataset_size = 20
+#validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
+indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
+
+#dataset_validation = torch.utils.data.Subset(dataset, indices[-validation_size:])
+dataset_train = torch.utils.data.Subset(dataset, indices[:])
+
+data_loader = torch.utils.data.DataLoader(
+    dataset_train,
+    batch_size=1,
+    shuffle=True,
+    collate_fn=utils.collate_fn
+)
+
+num_epochs = 1
+precedent_epoch = 0
+
+epoch, loss_metrics = train(model, data_loader, None, device, num_epochs, precedent_epoch, project_dir_root, optimizer)
+
+print("\n -end-")
+```
 
 
 
