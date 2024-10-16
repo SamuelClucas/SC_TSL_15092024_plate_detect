@@ -221,7 +221,209 @@ def save_checkpoint(model, optimizer, epoch, save_dir):
 
 #### Training function:
 ::: {.callout-note collapse="true"}
-*Note:* This function uses train_one_epoch() from [engine.py](../src/torchvision_deps/engine.py) in torchvision_deps. I may later modify this function, and so I define it locally prior to these modifications before *my* train function to preserve its development through time.
+*Note:* This function uses train_one_epoch() from [engine.py](../src/torchvision_deps/engine.py) in torchvision_deps. Engine.py uses the MetricLogger and SmoothedValue classes defined in [utils.py](../src/torchvision_deps/T_and_utils/utils.py) I may later modify these, and so I define them locally prior to these modifications here preserve their development through time.
+```{python}
+import datetime
+import errno
+import os
+import time
+from collections import defaultdict, deque
+
+import torch
+import torch.distributed as dist
+
+
+class SmoothedValue:
+    """Track a series of values and provide access to smoothed values over a
+    window or the global series average.
+    """
+
+    def __init__(self, window_size=20, fmt=None):
+        if fmt is None:
+            fmt = "{median:.4f} ({global_avg:.4f})"
+        self.deque = deque(maxlen=window_size)
+        self.total = 0.0
+        self.count = 0
+        self.fmt = fmt
+
+    def update(self, value, n=1):
+        self.deque.append(value)
+        self.count += n
+        self.total += value * n
+
+    def synchronize_between_processes(self):
+        """
+        Warning: does not synchronize the deque!
+        """
+        if not is_dist_avail_and_initialized():
+            return
+        t = torch.tensor([self.count, self.total], dtype=torch.float64, device="cuda")
+        dist.barrier()
+        dist.all_reduce(t)
+        t = t.tolist()
+        self.count = int(t[0])
+        self.total = t[1]
+
+    @property
+    def median(self):
+        d = torch.tensor(list(self.deque))
+        return d.median().item()
+
+    @property
+    def avg(self):
+        d = torch.tensor(list(self.deque), dtype=torch.float32)
+        return d.mean().item()
+
+    @property
+    def global_avg(self):
+        return self.total / self.count
+
+    @property
+    def max(self):
+        return max(self.deque)
+
+    @property
+    def value(self):
+        return self.deque[-1]
+
+    def __str__(self):
+        return self.fmt.format(
+            median=self.median, avg=self.avg, global_avg=self.global_avg, max=self.max, value=self.value
+        )
+
+
+def all_gather(data):
+    """
+    Run all_gather on arbitrary picklable data (not necessarily tensors)
+    Args:
+        data: any picklable object
+    Returns:
+        list[data]: list of data gathered from each rank
+    """
+    world_size = get_world_size()
+    if world_size == 1:
+        return [data]
+    data_list = [None] * world_size
+    dist.all_gather_object(data_list, data)
+    return data_list
+
+
+def reduce_dict(input_dict, average=True):
+    """
+    Args:
+        input_dict (dict): all the values will be reduced
+        average (bool): whether to do average or sum
+    Reduce the values in the dictionary from all processes so that all processes
+    have the averaged results. Returns a dict with the same fields as
+    input_dict, after reduction.
+    """
+    world_size = get_world_size()
+    if world_size < 2:
+        return input_dict
+    with torch.inference_mode():
+        names = []
+        values = []
+        # sort the keys so that they are consistent across processes
+        for k in sorted(input_dict.keys()):
+            names.append(k)
+            values.append(input_dict[k])
+        values = torch.stack(values, dim=0)
+        dist.all_reduce(values)
+        if average:
+            values /= world_size
+        reduced_dict = {k: v for k, v in zip(names, values)}
+    return reduced_dict
+
+class MetricLogger:
+    def __init__(self, delimiter="\t"):
+        self.meters = defaultdict(SmoothedValue)
+        self.delimiter = delimiter
+
+    def update(self, **kwargs):
+        for k, v in kwargs.items():
+            if isinstance(v, torch.Tensor):
+                v = v.item()
+            assert isinstance(v, (float, int))
+            self.meters[k].update(v)
+
+    def __getattr__(self, attr):
+        if attr in self.meters:
+            return self.meters[attr]
+        if attr in self.__dict__:
+            return self.__dict__[attr]
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{attr}'")
+
+    def __str__(self):
+        loss_str = []
+        for name, meter in self.meters.items():
+            loss_str.append(f"{name}: {str(meter)}")
+        return self.delimiter.join(loss_str)
+
+    def synchronize_between_processes(self):
+        for meter in self.meters.values():
+            meter.synchronize_between_processes()
+
+    def add_meter(self, name, meter):
+        self.meters[name] = meter
+
+    def log_every(self, iterable, print_freq, header=None):
+        i = 0
+        if not header:
+            header = ""
+        start_time = time.time()
+        end = time.time()
+        iter_time = SmoothedValue(fmt="{avg:.4f}")
+        data_time = SmoothedValue(fmt="{avg:.4f}")
+        space_fmt = ":" + str(len(str(len(iterable)))) + "d"
+        if torch.cuda.is_available():
+            log_msg = self.delimiter.join(
+                [
+                    header,
+                    "[{0" + space_fmt + "}/{1}]",
+                    "eta: {eta}",
+                    "{meters}",
+                    "time: {time}",
+                    "data: {data}",
+                    "max mem: {memory:.0f}",
+                ]
+            )
+        else:
+            log_msg = self.delimiter.join(
+                [header, "[{0" + space_fmt + "}/{1}]", "eta: {eta}", "{meters}", "time: {time}", "data: {data}"]
+            )
+        MB = 1024.0 * 1024.0
+        for obj in iterable:
+            data_time.update(time.time() - end)
+            yield obj
+            iter_time.update(time.time() - end)
+            if i % print_freq == 0 or i == len(iterable) - 1:
+                eta_seconds = iter_time.global_avg * (len(iterable) - i)
+                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                if torch.cuda.is_available():
+                    print(
+                        log_msg.format(
+                            i,
+                            len(iterable),
+                            eta=eta_string,
+                            meters=str(self),
+                            time=str(iter_time),
+                            data=str(data_time),
+                            memory=torch.cuda.max_memory_allocated() / MB,
+                        )
+                    )
+                else:
+                    print(
+                        log_msg.format(
+                            i, len(iterable), eta=eta_string, meters=str(self), time=str(iter_time), data=str(data_time)
+                        )
+                    )
+            i += 1
+            end = time.time()
+        total_time = time.time() - start_time
+        total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+        print(f"{header} Total time: {total_time_str} ({total_time / len(iterable):.4f} s / it)")
+```
+
 ```{python}
 import math
 import sys
@@ -236,7 +438,7 @@ from torchvision_deps.coco_utils import get_coco_api_from_dataset
 
 def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
     model.train()
-    metric_logger = utils.MetricLogger(delimiter="  ")
+    metric_logger = MetricLogger(delimiter="  ") # normally this would be utils.MetricLogger, but I'm using the MetricLogger defined in this quarto document
     metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
     header = f"Epoch: [{epoch}]"
 
@@ -1260,7 +1462,7 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
     # train for one epoch, printing every 10 iterations
         metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
 
-        for i, (k, v) in enumerate(metric_logger.meters.items()):
+        for k, v in metric_logger.meters.items():
             print(f'Key: {k} \t Value: {v}')
     
     # Get the average loss for this epoch
@@ -1311,82 +1513,120 @@ epoch, loss_metrics = train(model, data_loader, None, device, num_epochs, preced
 
 print("\n -end-")
 ```
-The keys in metric_logger.meters are 'loss, loss_classifier, loss_box_reg, loss_objectness, loss_rpn_box_reg'. 'train_one_epoch' overwrites the meters value throughout training by making a call to MetricLogger.update(). I will modify 'train_one_epoch.py' to store intra-epoch loss metrics in a dictionary of lists (this requires additional defaultdict import) and their associated key (e.g., intra_epoch_loss['loss_classififer'] = []):
+The keys in metric_logger.meters are 'loss, loss_classifier, loss_box_reg, loss_objectness, loss_rpn_box_reg'. 'train_one_epoch' overwrites the meters value throughout training by making a call to MetricLogger.update(). 
 
+Firstly I will modify the MetricLogger class, adding the 'intra_epoch_loss' member. I will store the log_message here for later access, as follows: 
 ```{python}
-from collections import defaultdict # new import
-import math
-import sys
-import time
+class MetricLogger:
+    def __init__(self, delimiter="\t"):
+        self.meters = defaultdict(SmoothedValue)
+        self.delimiter = delimiter
 
-import torch
-import torchvision.models.detection.mask_rcnn
-from torchvision_deps.T_and_utils import utils
-from torchvision_deps.coco_eval import CocoEvaluator
-from torchvision_deps.coco_utils import get_coco_api_from_dataset
+        # there is definitely a more elegant way to do this, but this should work
+        self.intra_epoch_loss = defaultdict(list)
 
-def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
-    model.train()
-    metric_logger = utils.MetricLogger(delimiter="  ")
-    metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
-    header = f"Epoch: [{epoch}]"
+    def update(self, **kwargs):
+        for k, v in kwargs.items():
+            if isinstance(v, torch.Tensor):
+                v = v.item()
+            assert isinstance(v, (float, int))
+            self.meters[k].update(v)
 
-    lr_scheduler = None
-    if epoch == 0:
-        warmup_factor = 1.0 / 1000
-        warmup_iters = min(1000, len(data_loader) - 1)
+    def __getattr__(self, attr):
+        if attr in self.meters:
+            return self.meters[attr]
+        if attr in self.__dict__:
+            return self.__dict__[attr]
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{attr}'")
 
-        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
-            optimizer, start_factor=warmup_factor, total_iters=warmup_iters
-        )
+    def __str__(self):
+        loss_str = []
+        for name, meter in self.meters.items():
+            loss_str.append(f"{name}: {str(meter)}")
+        return self.delimiter.join(loss_str)
 
-    for images, targets in metric_logger.log_every(data_loader, print_freq, header):
-        images = list(image.to(device) for image in images)
-        targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
-        with torch.cuda.amp.autocast(enabled=scaler is not None):
-            loss_dict = model(images, targets)
-            losses = sum(loss for loss in loss_dict.values())
+    def synchronize_between_processes(self):
+        for meter in self.meters.values():
+            meter.synchronize_between_processes()
 
-        # reduce losses over all GPUs for logging purposes
-        loss_dict_reduced = utils.reduce_dict(loss_dict)
-        losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+    def add_meter(self, name, meter):
+        self.meters[name] = meter
 
-        loss_value = losses_reduced.item()
-
-        if not math.isfinite(loss_value):
-            print(f"Loss is {loss_value}, stopping training")
-            print(loss_dict_reduced)
-            sys.exit(1)
-
-        optimizer.zero_grad()
-        if scaler is not None:
-            scaler.scale(losses).backward()
-            scaler.step(optimizer)
-            scaler.update()
+    def log_every(self, iterable, print_freq, header=None):
+        i = 0
+        if not header:
+            header = ""
+        start_time = time.time()
+        end = time.time()
+        iter_time = SmoothedValue(fmt="{avg:.4f}")
+        data_time = SmoothedValue(fmt="{avg:.4f}")
+        space_fmt = ":" + str(len(str(len(iterable)))) + "d"
+        if torch.cuda.is_available():
+            log_msg = self.delimiter.join(
+                [
+                    header,
+                    "[{0" + space_fmt + "}/{1}]",
+                    "eta: {eta}",
+                    "{meters}",
+                    "time: {time}",
+                    "data: {data}",
+                    "max mem: {memory:.0f}",
+                ]
+            )
         else:
-            losses.backward()
-            optimizer.step()
-
-        if lr_scheduler is not None:
-            lr_scheduler.step()
-
-        # --insertion here-- #
-        for i, (k, v) in enumerate(metric_logger.meters.items()):
-            intra_epoch_log = defaultdict(list)
-            intra_epoch_log = {'loss': [], 'loss_classifier': [], 'loss_box_reg': [], 'loss_objectness': [], 'loss_rpn_box_reg': []}
-            if k in intra_epoch_log:
-                intra_epoch_log[k].append(v)
-
-        metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
-        metric_logger.update(lr=optimizer.param_groups[0]["lr"])
-
-    return metric_logger, intra_epoch_log
+            log_msg = self.delimiter.join(
+                [header, "[{0" + space_fmt + "}/{1}]", "eta: {eta}", "{meters}", "time: {time}", "data: {data}"]
+            )
+        MB = 1024.0 * 1024.0
+        for obj in iterable:
+            data_time.update(time.time() - end)
+            yield obj
+            iter_time.update(time.time() - end)
+            if i % print_freq == 0 or i == len(iterable) - 1:
+                eta_seconds = iter_time.global_avg * (len(iterable) - i)
+                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                if torch.cuda.is_available():
+                    
+                    for k, v in self.meters.items():        # <------ insertion here
+                        self.intra_epoch_loss[k].append(v.value)     # <------- here see SmoothedValue class (v is SmoothedValue object)
+                    self.intra_epoch_loss['progression'].append((i/len(iterable))*100)  # <----- and here
+                    print(
+                        log_msg.format(
+                            i,
+                            len(iterable),
+                            eta=eta_string,
+                            meters=str(self),
+                            time=str(iter_time),
+                            data=str(data_time),
+                            memory=torch.cuda.max_memory_allocated() / MB,
+                        )
+                    )
+                else:
+                    for k, v in self.meters.items():        # <------ insertion here
+                        self.intra_epoch_loss[k].append(v.value)     # <------- here
+                    self.intra_epoch_loss['progression'].append((i/len(iterable))*100)  # <----- and here: could use add_meter in train_one_epoch to remove this line
+                    print(
+                        log_msg.format(
+                            i, len(iterable), eta=eta_string, meters=str(self), time=str(iter_time), data=str(data_time)
+                        )
+                    )
+            i += 1
+            end = time.time()
+        total_time = time.time() - start_time
+        total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+        print(f"{header} Total time: {total_time_str} ({total_time / len(iterable):.4f} s / it)")
 ```
 
  I will pass these to a plot_training_loss() helper function.
 
 ```{python}
 def plot_training_loss(save_dir: str, epoch: int, **kwargs):
+    progression = [v for v in kwargs['progression']]
+    loss_objectness = [v for v in kwargs['loss_objectness']]
+    loss = [v for v in kwargs['loss']]
+    loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
+    loss_classifier = [v for v in kwargs['loss_classifier']]
+    lr = [v for v in kwargs['lr']] 
     # the metrics are passed using list comprehension in train()
     plt.figure(figsize=(10, 6))
     plt.plot(progression, loss, label='Loss')
@@ -1395,9 +1635,9 @@ def plot_training_loss(save_dir: str, epoch: int, **kwargs):
     plt.plot(progression, loss_classifier, label='Loss Classifier')
 
     plt.xlabel('Progression through Epoch')
-    plt.ylabel('Loss')
+    plt.ylabel('Loss / Log10')
     plt.yscale("log")
-    plt.title('Loss Metrics Progression Through One Epoch')
+    plt.title('Loss Metrics Progression Through One Epoch / %')
     plt.legend()
     plt.grid(False)
     plt.show()
@@ -1419,21 +1659,20 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
     )
 
     for epoch in range(num_epochs):
-    # train for one epoch, printing every 10 iterations
-        metric_logger, intra_epoch_losses = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
-
-        # plot loss throughout *this* epoch's training
-        plot_training_loss(save_dir, epoch, [(k, v) for (k, v) in enumerate(intra_epoch_losses.items())])     # <----- insertion here
+    # train for one epoch, printing every iteration
+        metric_logger= train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=1)
+        for k, v in metric_logger.intra_epoch_loss.items():
+            print(f"\n Key: {k}\n Value: {v}")
+        # plot loss throughout *this* epoch's training, save plot in results
+        plot_training_loss(save_dir, epoch, **{k: v for k, v in metric_logger.intra_epoch_loss.items()})     # <----- insertion here
     
     # Get the average loss for this epoch
         epoch_loss = metric_logger.meters['loss'].global_avg
         train_losses.append(epoch_loss)
 
+        save_dir += 'checkpoints'
         # Save checkpoint
         save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
-        
-        # Plot and save the metrics
-        plot_eval_metrics(train_losses, epoch + precedent_epoch)
         
         # Update the learning rate
         lr_scheduler.step()
@@ -1441,7 +1680,7 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
     return num_epochs + precedent_epoch, train_losses
 ```
 
-Now run the script, passing the project_dir_root created earlier instead of the save_dir to make sure that plots are saved in results/ which is now in the root of the project:
+Now run the script make sure that plots are saved in results/ which is now in the root of the project:
 
 ```{python}
 model, optimizer, preprocess = get_model_instance_object_detection(2)
@@ -1453,7 +1692,7 @@ dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
         )
 
 # split the dataset in train and test set
-dataset_size = 20
+dataset_size = 2
 #validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
 indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
 
@@ -1469,13 +1708,14 @@ data_loader = torch.utils.data.DataLoader(
 
 num_epochs = 1
 precedent_epoch = 0
+save_dir = '../'
 
-epoch, loss_metrics = train(model, data_loader, None, device, num_epochs, precedent_epoch, project_dir_root, optimizer)
+epoch, loss_metrics = train(model, data_loader, None, device, num_epochs, precedent_epoch, save_dir, optimizer)
 
 print("\n -end-")
 ```
 
-
+That's the 'plot_training_loss' sorted. Now for the 'eval_metrics'...
 
 
 
