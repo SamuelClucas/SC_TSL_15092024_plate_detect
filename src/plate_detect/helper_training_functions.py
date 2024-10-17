@@ -57,6 +57,29 @@ def save_checkpoint(model, optimizer, epoch, save_dir):
     save_path = os.path.join(save_dir, filename)
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved: {save_path}")
+    
+def plot_training_loss(save_dir: str, epoch: int, **kwargs):
+    progression = [v for v in kwargs['progression']]
+    loss_objectness = [v for v in kwargs['loss_objectness']]
+    loss = [v for v in kwargs['loss']]
+    loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
+    loss_classifier = [v for v in kwargs['loss_classifier']]
+    lr = [v for v in kwargs['lr']] 
+    # the metrics are passed using list comprehension in train()
+    plt.figure(figsize=(10, 6))
+    plt.plot(progression, loss, label='Loss')
+    plt.plot(progression, loss_objectness, label='Loss Objectness')
+    plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
+    plt.plot(progression, loss_classifier, label='Loss Classifier')
+
+    plt.xlabel('Progression through Epoch')
+    plt.ylabel('Loss / Log10')
+    plt.yscale("log")
+    plt.title('Loss Metrics Progression Through One Epoch / %')
+    plt.legend()
+    plt.grid(False)
+    plt.show()
+    plt.savefig(f'{save_dir}/results/loss_metrics_epoch_{epoch}')
 
 def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir, optimizer): 
     model.train()
@@ -71,18 +94,20 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
     )
 
     for epoch in range(num_epochs):
-    # train for one epoch, printing every 10 iterations
-        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+    # train for one epoch, printing every iteration
+        metric_logger= train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=1)
+        for k, v in metric_logger.intra_epoch_loss.items():
+            print(f"\n Key: {k}\n Value: {v}")
+        # plot loss throughout *this* epoch's training, save plot in results
+        plot_training_loss(save_dir, epoch, **{k: v for k, v in metric_logger.intra_epoch_loss.items()})     # <----- insertion here
     
     # Get the average loss for this epoch
         epoch_loss = metric_logger.meters['loss'].global_avg
         train_losses.append(epoch_loss)
 
+        save_dir += 'checkpoints'
         # Save checkpoint
         save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
-        
-        # Plot and save the metrics
-        plot_eval_metrics(train_losses, epoch + precedent_epoch)
         
         # Update the learning rate
         lr_scheduler.step()

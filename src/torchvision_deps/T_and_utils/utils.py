@@ -115,6 +115,9 @@ class MetricLogger:
         self.meters = defaultdict(SmoothedValue)
         self.delimiter = delimiter
 
+        # there is definitely a more elegant way to do this, but this should work
+        self.intra_epoch_loss = defaultdict(list)
+
     def update(self, **kwargs):
         for k, v in kwargs.items():
             if isinstance(v, torch.Tensor):
@@ -176,6 +179,10 @@ class MetricLogger:
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 if torch.cuda.is_available():
+                    
+                    for k, v in self.meters.items():        # <------ insertion here
+                        self.intra_epoch_loss[k].append(v.value)     # <------- here see SmoothedValue class (v is SmoothedValue object)
+                    self.intra_epoch_loss['progression'].append((i/len(iterable))*100)  # <----- and here
                     print(
                         log_msg.format(
                             i,
@@ -188,6 +195,9 @@ class MetricLogger:
                         )
                     )
                 else:
+                    for k, v in self.meters.items():        # <------ insertion here
+                        self.intra_epoch_loss[k].append(v.value)     # <------- here
+                    self.intra_epoch_loss['progression'].append((i/len(iterable))*100)  # <----- and here: could use add_meter in train_one_epoch to remove this line
                     print(
                         log_msg.format(
                             i, len(iterable), eta=eta_string, meters=str(self), time=str(iter_time), data=str(data_time)

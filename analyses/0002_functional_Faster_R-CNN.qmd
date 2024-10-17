@@ -1744,7 +1744,7 @@ def plot_train_losses_across_epochs(save_dir: str, precedent_epochs: int, epochs
     plt.title(f'Loss Metrics from epoch {precedent_epoch}-{precedent_epoch + epochs} / %')
     plt.legend()
     plt.grid(False)
-    plt.savefig(f'{save_dir}/results/loss_metrics_epoch_{epoch}')
+    plt.savefig(f'{save_dir}/results/loss_metrics_epochs_{precedent_epoch}-{precedent_epoch + epochs}')
     plt.show()
 ```
 
