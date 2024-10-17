@@ -57,14 +57,15 @@ def save_checkpoint(model, optimizer, epoch, save_dir):
     save_path = os.path.join(save_dir, filename)
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved: {save_path}")
-    
+
 def plot_training_loss(save_dir: str, epoch: int, **kwargs):
-    progression = [v for v in kwargs['progression']]
+    progression = [v for v in kwargs['progression']] # I'm not sure if list comprehension is neccessary here... perhaps just try progression = kwargs['progression']?
     loss_objectness = [v for v in kwargs['loss_objectness']]
     loss = [v for v in kwargs['loss']]
     loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
     loss_classifier = [v for v in kwargs['loss_classifier']]
     lr = [v for v in kwargs['lr']] 
+
     # the metrics are passed using list comprehension in train()
     plt.figure(figsize=(10, 6))
     plt.plot(progression, loss, label='Loss')
@@ -78,13 +79,37 @@ def plot_training_loss(save_dir: str, epoch: int, **kwargs):
     plt.title('Loss Metrics Progression Through One Epoch / %')
     plt.legend()
     plt.grid(False)
-    plt.show()
     plt.savefig(f'{save_dir}/results/loss_metrics_epoch_{epoch}')
+    plt.show()
+
+def plot_train_losses_across_epochs(save_dir: str, precedent_epoch: int, epochs: int, **kwargs):
+    progression = [v for v in kwargs['progression']] # I'm not sure if list comprehension is neccessary here... perhaps just try progression = kwargs['progression']?
+    loss_objectness = [v for v in kwargs['loss_objectness']]
+    loss = [v for v in kwargs['loss']]
+    loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
+    loss_classifier = [v for v in kwargs['loss_classifier']]
+    lr = [v for v in kwargs['lr']] 
+    
+    # the metrics are passed using list comprehension in train()
+    plt.figure(figsize=(10, 6))
+    plt.plot(progression, loss, label='Loss')
+    plt.plot(progression, loss_objectness, label='Loss Objectness')
+    plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
+    plt.plot(progression, loss_classifier, label='Loss Classifier')
+
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss / Log10')
+    plt.yscale("log")
+    plt.title(f'Loss Metrics from epoch {precedent_epoch}-{precedent_epoch + epochs} / %')
+    plt.legend()
+    plt.grid(False)
+    plt.savefig(f'{save_dir}/results/loss_metrics_epochs_{precedent_epoch}-{precedent_epoch + epochs}')
+    plt.show()
 
 def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir, optimizer): 
     model.train()
     # Initialize lists to store metrics
-    train_losses = []
+    losses_across_epochs = defaultdict(list)
     
     # and a learning rate scheduler
     lr_scheduler = torch.optim.lr_scheduler.StepLR(
@@ -95,24 +120,26 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
 
     for epoch in range(num_epochs):
     # train for one epoch, printing every iteration
-        metric_logger= train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=1)
-        for k, v in metric_logger.intra_epoch_loss.items():
-            print(f"\n Key: {k}\n Value: {v}")
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=1)
+        for k, v in metric_logger.intra_epoch_loss.items(): # <----- insertion here
+            print(f"\n Key: {k}\n Value: {v}") # <----- insertion here
+            # Get the average loss metrics at this epoch
+        for k, v in metric_logger.meters.items():
+            losses_across_epochs[k].append(v.value) # see SmoothedValude in utils.py for value as v is a SmoothedValue object
+        losses_across_epochs['progression'].append(((epoch+1)/num_epochs)*100)
+
         # plot loss throughout *this* epoch's training, save plot in results
         plot_training_loss(save_dir, epoch, **{k: v for k, v in metric_logger.intra_epoch_loss.items()})     # <----- insertion here
-    
-    # Get the average loss for this epoch
-        epoch_loss = metric_logger.meters['loss'].global_avg
-        train_losses.append(epoch_loss)
 
-        save_dir += 'checkpoints'
         # Save checkpoint
-        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, (save_dir + 'checkpoints'))
         
         # Update the learning rate
         lr_scheduler.step()
 
-    return num_epochs + precedent_epoch, train_losses
+    # plot average train losses across several epochs
+    plot_train_losses_across_epochs(save_dir, precedent_epoch, num_epochs, **{k: v for k, v in losses_across_epochs.items()})
+    return num_epochs + precedent_epoch
 
 
 def load_model(save_dir: str, num_classes: int, model_file_name: str):
@@ -193,15 +220,7 @@ def plot_prediction(model, dataset, device, index: int, save_dir: str):
 
 def plot_eval_metrics(eval_metrics, epoch):
     plt.figure(figsize=(15, 10))
-    
-   # # Plot training loss
-   # plt.subplot(2, 2, 1)
-   # plt.plot(train_losses, label='Train Loss')
-   # plt.title('Training Loss over epochs')
-   # plt.xlabel('Epoch')
-   # plt.ylabel('Loss')
-   # plt.legend()
-    
+
     # Plot mAP@[0.5:0.95]
     plt.subplot(2, 2, 2)
     map_values = [metrics[0] for metrics in eval_metrics]
@@ -231,6 +250,7 @@ def plot_eval_metrics(eval_metrics, epoch):
     
     plt.tight_layout()
     plt.savefig(f'training_metrics_epoch_{epoch}.png')
+    plt.show()
     plt.close()
 
 

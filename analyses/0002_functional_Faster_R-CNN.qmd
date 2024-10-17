@@ -1723,7 +1723,7 @@ That's the 'plot_training_loss' sorted for plotting the training loss metrics wi
 First, I'll define 'plot_train_losses_across_epochs':
 
 ```{python}
-def plot_train_losses_across_epochs(save_dir: str, precedent_epochs: int, epochs: int, **kwargs):
+def plot_train_losses_across_epochs(save_dir: str, precedent_epoch: int, epochs: int, **kwargs):
     progression = [v for v in kwargs['progression']] # I'm not sure if list comprehension is neccessary here... perhaps just try progression = kwargs['progression']?
     loss_objectness = [v for v in kwargs['loss_objectness']]
     loss = [v for v in kwargs['loss']]
@@ -1822,7 +1822,9 @@ print("\n -end-")
 
 Given the y-axis is logarithmic, and log10(0) is -infinity (NaN), and that matplotlib wants the x and y axis to be of equal length, I cannot start the plot x axis from 0%. Just something to keep in mind. \
 
+I think the intra-epoch loss metrics will be useful in evaluating batch to batch variability. Mainly I think it will help for short tests to gain insight into a model's module dysfunction. \
 Training plot generation now works. Now for the 'eval_metrics'... \
+
 
 
 
