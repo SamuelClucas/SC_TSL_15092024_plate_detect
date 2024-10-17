@@ -1823,40 +1823,19 @@ print("\n -end-")
 Given the y-axis is logarithmic, and log10(0) is -infinity (NaN), and that matplotlib wants the x and y axis to be of equal length, I cannot start the plot x axis from 0%. Just something to keep in mind. \
 
 I think the intra-epoch loss metrics will be useful in evaluating batch to batch variability. Mainly I think it will help for short tests to gain insight into a model's module dysfunction. \
-Training plot generation now works. Now for the 'eval_metrics'... \
+Training plot generation now works. 
+
+Now for the 'eval_metrics'... \
 
 
 
 
 
+## Adding Image Augmentation to Helper Functions:
 
+See [here](https://pdf.sciencedirectassets.com/272206/1-s2.0-S0031320322X00149/1-s2.0-S0031320323000481/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEMX%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQDHGwjyK8inLmJunlMGBkjPI%2B2RQhf29a3PpwUh%2FtcGtQIhAKXEABtOLty%2FeIaoLRArLOo1AG1g5sCAFuBCid9AF0jFKrMFCC4QBRoMMDU5MDAzNTQ2ODY1IgzGC8wcf0hM6U6%2BuigqkAXE2vBrPyLEzEszAdKmPGPE%2Fe2PuWiGsl4asY0mfwrTgBHcCJE%2B7mvDq8J8zDT1gLeiyrumMRHkpG17xRZHf3zGAu%2BV8ElbuBhsVuHZAb%2FnX4n5e7oLaKOO4YW2y4ETsCtwLroPKH4FcWxTretUzrlbhCAS%2BX5d861gT0Y6UTz1LEbIEgq4OWRRXSW5Yn%2Fq1DxzX8wOvw0pw6A%2F5MgVxcz67diPlmC7ph58goHCtHrkUJGqOTWKge%2B8ZCPPPkphqh3I9KbDfhGTKfhDaucbWl1J7eVZoJ0VX8ArJkjW3TGhkS73brzjdN7HR8wRRNBiVXqJhYPofxKyPqKASiRRj7MRIhOgzbkU5d0z4zxNt8Xliwc0bCymJ%2BPepBkjnyJ%2F5%2FCodwL8m5O6m3La5hrVAAjC9x7NIt%2Btecb176q%2BDRB3ELYwD8v0%2F0c8jTUmUeNZatzGPH3WTUaC%2Bo%2B4nKsrpAobYAYOQX8JmcmlT9RO6kTkhAVKsuSN54kl1K%2Fs977nu5B%2FrvePps7UFcN9T580vE%2B2oFa1uGwdbJr1IYZslqT3od3Gz0NmynC1sV%2FRgAYvjk6IBDG7W4FaDmmMYF8vOlD%2FBxZUuLMmw%2BcHlwJIROMn73F77fXo2K0IQMByrmiEg%2FK%2BvKLVLnCrRjpo%2FqnnFipG5FbBforeDYUmN9x6lN%2BH9S%2Bnho8kKXrwJscWXC9Lvs90E8ccWorPjPC52be0W7Y%2FxqEtfvutJ4hnvDT9ilwvpNbu%2BdHsbmwGsTiXzRjwNy4ZhCo7MLSITLM9VR9mVRci4ulnxV2QpXvSBvEYB1%2BF8VcFQIiTavC69L0sUs%2BFYZyZjExT2gW4%2Fc%2Bldptpmdz2V4WIH%2BHKjNX%2BaL0CGKRLejDyj8S4BjqwAe0oxq1p9jccRHXzaAZcTmiwV3fBbPgX4CN%2FuTG8kVpMikl6fAyT4tGm8FD3wT8sPtI2raxqEI0wYIZ33t0t4vYB0NQjFcWSjF%2FocTTGT%2FQITMsLBIP3YFOTJG8SLlRnUZ8sxKsoTfZcs37ToI%2BWZ%2FZtBoj%2Fc0iuU97k3KehPAGwKs8%2BBQRJpXDum8l3y6QN5zGp1tFxI99lg7Nu0RzMg0ZOiDbU0m3pW5rTiMbPZQdn&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20241017T140230Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTYS2ZZAFYX%2F20241017%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=b216340b0855727efb00bc68031e19f29813254ab964d60a1685e44e45714c89&hash=dd2c23826d13b059c59a8112432e10407ff621d79cac2d6790b0795c02f0f467&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S0031320323000481&tid=spdf-95560c99-4f04-404c-86e1-a3a1717cba5c&sid=6f3a660355f9464580690b17c2898370a5bagxrqb&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=1d04570653560a560e5c52&rr=8d40d3a30a2c63f3&cc=gb) for a comprehensive overview of image augmentation techniques for deep learning. \
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+There they achieved an accuracy improvement of around 1.5% using [mixup](https://arxiv.org/pdf/1710.09412), which uses 'convex combinations of pairs of examples and their labels' to improve generalisation of network architectures.
 
 
 
