@@ -182,7 +182,7 @@ class MetricLogger:
                     
                     for k, v in self.meters.items():        # <------ insertion here
                         self.intra_epoch_loss[k].append(v.value)     # <------- here see SmoothedValue class (v is SmoothedValue object)
-                    self.intra_epoch_loss['progression'].append((i/len(iterable))*100)  # <----- and here
+                    self.intra_epoch_loss['progression'].append((((i+1)/(len(iterable))*100)))  # <----- and here
                     print(
                         log_msg.format(
                             i,
@@ -197,7 +197,7 @@ class MetricLogger:
                 else:
                     for k, v in self.meters.items():        # <------ insertion here
                         self.intra_epoch_loss[k].append(v.value)     # <------- here
-                    self.intra_epoch_loss['progression'].append((i/len(iterable))*100)  # <----- and here: could use add_meter in train_one_epoch to remove this line
+                    self.intra_epoch_loss['progression'].append(((i+1)/(len(iterable))*100))  # <----- and here: could use add_meter in train_one_epoch to remove this line
                     print(
                         log_msg.format(
                             i, len(iterable), eta=eta_string, meters=str(self), time=str(iter_time), data=str(data_time)
