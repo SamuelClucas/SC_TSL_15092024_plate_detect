@@ -909,7 +909,7 @@ dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
         )
 
 # split the dataset in train and test set
-dataset_size = len(dataset)
+dataset_size = 2 # normally would be len(dataset), but for debugging purposes this is sufficient
 validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
 indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
 
