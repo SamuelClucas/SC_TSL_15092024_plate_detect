@@ -995,19 +995,18 @@ The implementation focuses on validating the core functionality of the
 object detection pipeline before scaling up to full training runs.  
 
 This script uses code from the following src files:  
--
-src/[Plate_Image_Dataset.py](../src/plate_detect/Plate_Image_Dataset.py) -
+- [Plate_Image_Dataset.py](../src/plate_detect/Plate_Image_Dataset.py) -
 custom class that handles storing and accessing images and their
 corresponding bounding box vertices.  
 -
-src/[helper_training_functions.py](../src/plate_detect/helper_training_functions.py) -
+[helper_training_functions.py](../src/plate_detect/helper_training_functions.py) -
 a group of useful helper functions I’ve written. For example,
 ‘get_model_instance_object_detection’ should return a
 [ResNet50](https://pytorch.org/hub/pytorch_vision_resnet/) backbone
 ([ImageNet1K_V2
 weights](https://pytorch.org/vision/0.18/models/generated/torchvision.models.resnet50.html#:~:text=By%20default%2C%20no%20pre%2Dtrained%20weights%20are%20used.)),
 with a Region Proposal Network, as well as classifier and bounding box
-regression heads.
+regression heads.  
 
 It may also be helpful to visualise the model architecture. There are
 libraries for this, one of which is
@@ -1426,17 +1425,17 @@ print("\n -end-")
     /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
       with torch.cuda.amp.autocast(enabled=scaler is not None):
 
-    Epoch: [0]  [ 0/20]  eta: 0:01:19  lr: 0.000268  loss: 12.7945 (12.7945)  loss_classifier: 0.7783 (0.7783)  loss_box_reg: 0.0010 (0.0010)  loss_objectness: 0.5034 (0.5034)  loss_rpn_box_reg: 11.5117 (11.5117)  time: 3.9912  data: 0.0122
-    Epoch: [0]  [10/20]  eta: 0:00:34  lr: 0.002897  loss: 11.4986 (11.6824)  loss_classifier: 0.3084 (0.3733)  loss_box_reg: 0.0008 (0.0008)  loss_objectness: 0.0673 (0.1701)  loss_rpn_box_reg: 11.1798 (11.1383)  time: 3.4898  data: 0.0119
-    Epoch: [0]  [19/20]  eta: 0:00:03  lr: 0.005000  loss: 10.7264 (9.3270)  loss_classifier: 0.0265 (0.2148)  loss_box_reg: 0.0008 (0.0010)  loss_objectness: 0.0595 (0.1178)  loss_rpn_box_reg: 10.6532 (8.9934)  time: 3.3762  data: 0.0114
-    Epoch: [0] Total time: 0:01:07 (3.3763 s / it)
+    Epoch: [0]  [ 0/20]  eta: 0:01:03  lr: 0.000268  loss: 12.4923 (12.4923)  loss_classifier: 0.6538 (0.6538)  loss_box_reg: 0.0006 (0.0006)  loss_objectness: 0.5237 (0.5237)  loss_rpn_box_reg: 11.3143 (11.3143)  time: 3.1821  data: 0.0093
+    Epoch: [0]  [10/20]  eta: 0:00:31  lr: 0.002897  loss: 11.6042 (11.6505)  loss_classifier: 0.2859 (0.3270)  loss_box_reg: 0.0008 (0.0010)  loss_objectness: 0.0797 (0.1952)  loss_rpn_box_reg: 11.2158 (11.1273)  time: 3.1070  data: 0.0087
+    Epoch: [0]  [19/20]  eta: 0:00:03  lr: 0.005000  loss: 10.8635 (9.8729)  loss_classifier: 0.0267 (0.1871)  loss_box_reg: 0.0008 (0.0011)  loss_objectness: 0.0797 (0.1437)  loss_rpn_box_reg: 10.7523 (9.5411)  time: 3.0897  data: 0.0086
+    Epoch: [0] Total time: 0:01:01 (3.0898 s / it)
     Checkpoint saved: results/checkpoint_epoch_0.pth
     creating index...
     index created!
-    Test:  [0/5]  eta: 0:00:10  model_time: 2.0647 (2.0647)  evaluator_time: 0.0004 (0.0004)  time: 2.0742  data: 0.0090
-    Test:  [4/5]  eta: 0:00:02  model_time: 2.3267 (2.2443)  evaluator_time: 0.0005 (0.0004)  time: 2.2546  data: 0.0097
-    Test: Total time: 0:00:11 (2.2547 s / it)
-    Averaged stats: model_time: 2.3267 (2.2443)  evaluator_time: 0.0005 (0.0004)
+    Test:  [0/5]  eta: 0:00:09  model_time: 1.9443 (1.9443)  evaluator_time: 0.0010 (0.0010)  time: 1.9538  data: 0.0085
+    Test:  [4/5]  eta: 0:00:01  model_time: 1.9443 (1.9443)  evaluator_time: 0.0007 (0.0008)  time: 1.9535  data: 0.0084
+    Test: Total time: 0:00:09 (1.9536 s / it)
+    Averaged stats: model_time: 1.9443 (1.9443)  evaluator_time: 0.0007 (0.0008)
     Accumulating evaluation results...
     DONE (t=0.00s).
     IoU metric: bbox
@@ -1474,246 +1473,25 @@ debugging the helper functions, not training the model.
 ### Loading a model and implementing ‘plot_training_loss’:
 
 Training seemed to complete ‘successfully’ (without any overt error
-message), as shown by the standard output: \#\| code-fold: true —–
-stdout —– Epoch: \[0\] \[ 0/445\] eta: 3:16:15 lr: 0.000016 loss:
-12.4731 (12.4731)  
-loss_classifier: 0.6946 (0.6946) loss_box_reg: 0.0014 (0.0014)  
-loss_objectness: 0.5575 (0.5575) loss_rpn_box_reg: 11.2197 (11.2197)  
-time: 26.4628 data: 0.0658 —– stdout —– Epoch: \[0\] \[ 10/445\] eta:
-3:04:58 lr: 0.000129 loss: 12.2818 (12.2796)  
-loss_classifier: 0.6680 (0.6509) loss_box_reg: 0.0014 (0.0016)  
-loss_objectness: 0.5165 (0.4319) loss_rpn_box_reg: 11.2103 (11.1952)  
-time: 25.5133 data: 0.0331 —– stdout —– Epoch: \[0\] \[ 20/445\] eta:
-2:56:12 lr: 0.000241 loss: 11.9741 (11.9625)  
-loss_classifier: 0.5031 (0.4939) loss_box_reg: 0.0010 (0.0014)  
-loss_objectness: 0.1025 (0.2652) loss_rpn_box_reg: 11.2047 (11.2020)  
-time: 24.7964 data: 0.0347 —– stdout —– Epoch: \[0\] \[ 30/445\] eta:
-2:49:23 lr: 0.000354 loss: 11.3177 (11.6900)  
-loss_classifier: 0.1428 (0.3636) loss_box_reg: 0.0008 (0.0014)  
-loss_objectness: 0.0437 (0.1921) loss_rpn_box_reg: 11.0751 (11.1330)  
-time: 23.9285 data: 0.0389 —– stdout —– Epoch: \[0\] \[ 40/445\] eta:
-2:46:09 lr: 0.000466 loss: 10.9000 (11.4590)  
-loss_classifier: 0.0464 (0.2834) loss_box_reg: 0.0008 (0.0013)  
-loss_objectness: 0.0347 (0.1553) loss_rpn_box_reg: 10.7784 (11.0190)  
-time: 24.3416 data: 0.0362 —– stdout —– Epoch: \[0\] \[ 50/445\] eta:
-2:42:53 lr: 0.000579 loss: 10.1130 (10.8375)  
-loss_classifier: 0.0280 (0.2326) loss_box_reg: 0.0012 (0.0014)  
-loss_objectness: 0.0291 (0.1330) loss_rpn_box_reg: 10.0758 (10.4705)  
-time: 25.1325 data: 0.0359 —– stdout —– Epoch: \[0\] \[ 60/445\] eta:
-2:37:46 lr: 0.000691 loss: 5.4877 (9.7458)  
-loss_classifier: 0.0184 (0.1970) loss_box_reg: 0.0017 (0.0015)  
-loss_objectness: 0.0268 (0.1215) loss_rpn_box_reg: 5.4460 (9.4258) time:
-24.5357 data: 0.0356 —– stdout —– Epoch: \[0\] \[ 70/445\] eta: 2:33:04
-lr: 0.000804 loss: 2.9799 (8.7480)  
-loss_classifier: 0.0132 (0.1709) loss_box_reg: 0.0012 (0.0014)  
-loss_objectness: 0.0268 (0.1124) loss_rpn_box_reg: 2.9488 (8.4633) time:
-23.8520 data: 0.0346 —– stdout —– Epoch: \[0\] \[ 80/445\] eta: 2:28:37
-lr: 0.000916 loss: 1.8505 (7.8749)  
-loss_classifier: 0.0090 (0.1509) loss_box_reg: 0.0005 (0.0013)  
-loss_objectness: 0.0169 (0.1005) loss_rpn_box_reg: 1.8392 (7.6221) time:
-23.9480 data: 0.0344 —– stdout —– Epoch: \[0\] \[ 90/445\] eta: 2:24:38
-lr: 0.001029 loss: 1.8975 (7.3354)  
-loss_classifier: 0.0071 (0.1350) loss_box_reg: 0.0003 (0.0012)  
-loss_objectness: 0.0081 (0.0901) loss_rpn_box_reg: 1.8844 (7.1090) time:
-24.2811 data: 0.0355 —– stdout —– Epoch: \[0\] \[100/445\] eta: 2:20:27
-lr: 0.001141 loss: 2.8099 (6.9393)  
-loss_classifier: 0.0071 (0.1224) loss_box_reg: 0.0002 (0.0011)  
-loss_objectness: 0.0056 (0.0844) loss_rpn_box_reg: 2.7990 (6.7314) time:
-24.4172 data: 0.0355 —– stdout —– Epoch: \[0\] \[110/445\] eta: 2:16:03
-lr: 0.001254 loss: 2.2265 (6.4966)  
-loss_classifier: 0.0054 (0.1118) loss_box_reg: 0.0003 (0.0011)  
-loss_objectness: 0.0048 (0.0777) loss_rpn_box_reg: 2.2155 (6.3060) time:
-24.0187 data: 0.0361 —– stdout —– Epoch: \[0\] \[120/445\] eta: 2:11:50
-lr: 0.001366 loss: 1.9435 (6.1239)  
-loss_classifier: 0.0048 (0.1030) loss_box_reg: 0.0003 (0.0010)  
-loss_objectness: 0.0019 (0.0715) loss_rpn_box_reg: 1.9376 (5.9484) time:
-23.8897 data: 0.0357 —– stdout —– Epoch: \[0\] \[130/445\] eta: 2:07:35
-lr: 0.001479 loss: 1.7308 (5.7787)  
-loss_classifier: 0.0043 (0.0954) loss_box_reg: 0.0003 (0.0010)  
-loss_objectness: 0.0030 (0.0666) loss_rpn_box_reg: 1.7195 (5.6157) time:
-23.9366 data: 0.0331 —– stdout —– Epoch: \[0\] \[140/445\] eta: 2:03:15
-lr: 0.001591 loss: 1.5541 (5.4746)  
-loss_classifier: 0.0028 (0.0889) loss_box_reg: 0.0002 (0.0009)  
-loss_objectness: 0.0042 (0.0630) loss_rpn_box_reg: 1.5190 (5.3218) time:
-23.7006 data: 0.0338 —– stdout —– Epoch: \[0\] \[150/445\] eta: 1:59:03
-lr: 0.001704 loss: 1.2306 (5.1811)  
-loss_classifier: 0.0024 (0.0831) loss_box_reg: 0.0002 (0.0009)  
-loss_objectness: 0.0038 (0.0591) loss_rpn_box_reg: 1.2248 (5.0381) time:
-23.6403 data: 0.0338 —– stdout —– Epoch: \[0\] \[160/445\] eta: 1:54:58
-lr: 0.001816 loss: 1.0814 (4.9265)  
-loss_classifier: 0.0018 (0.0781) loss_box_reg: 0.0002 (0.0008)  
-loss_objectness: 0.0020 (0.0557) loss_rpn_box_reg: 1.0769 (4.7919) time:
-23.8936 data: 0.0340 —– stdout —– Epoch: \[0\] \[170/445\] eta: 1:50:45
-lr: 0.001929 loss: 1.1236 (4.7317)  
-loss_classifier: 0.0015 (0.0736) loss_box_reg: 0.0001 (0.0008)  
-loss_objectness: 0.0017 (0.0525) loss_rpn_box_reg: 1.1205 (4.6048) time:
-23.8013 data: 0.0313 —– stdout —– Epoch: \[0\] \[180/445\] eta: 1:46:35
-lr: 0.002041 loss: 1.3348 (4.5468)  
-loss_classifier: 0.0013 (0.0696) loss_box_reg: 0.0002 (0.0008)  
-loss_objectness: 0.0007 (0.0497) loss_rpn_box_reg: 1.3297 (4.4268) time:
-23.5565 data: 0.0266 —– stdout —– Epoch: \[0\] \[190/445\] eta: 1:42:29
-lr: 0.002154 loss: 1.0461 (4.3523)  
-loss_classifier: 0.0011 (0.0660) loss_box_reg: 0.0003 (0.0008)  
-loss_objectness: 0.0008 (0.0474) loss_rpn_box_reg: 1.0428 (4.2382) time:
-23.6894 data: 0.0281 —– stdout —– Epoch: \[0\] \[200/445\] eta: 1:38:22
-lr: 0.002266 loss: 0.8895 (4.1987)  
-loss_classifier: 0.0010 (0.0628) loss_box_reg: 0.0004 (0.0007)  
-loss_objectness: 0.0012 (0.0451) loss_rpn_box_reg: 0.8852 (4.0901) time:
-23.7231 data: 0.0375 —– stdout —– Epoch: \[0\] \[210/445\] eta: 1:34:14
-lr: 0.002379 loss: 0.9960 (4.0410)  
-loss_classifier: 0.0011 (0.0599) loss_box_reg: 0.0003 (0.0007)  
-loss_objectness: 0.0005 (0.0430) loss_rpn_box_reg: 0.9941 (3.9374) time:
-23.5388 data: 0.0365 —– stdout —– Epoch: \[0\] \[220/445\] eta: 1:30:10
-lr: 0.002491 loss: 0.8399 (3.9289)  
-loss_classifier: 0.0011 (0.0572) loss_box_reg: 0.0004 (0.0007)  
-loss_objectness: 0.0009 (0.0412) loss_rpn_box_reg: 0.8378 (3.8298) time:
-23.5903 data: 0.0301 —– stdout —– Epoch: \[0\] \[230/445\] eta: 1:54:43
-lr: 0.002604 loss: 1.2622 (3.8144)  
-loss_classifier: 0.0009 (0.0548) loss_box_reg: 0.0003 (0.0007)  
-loss_objectness: 0.0009 (0.0395) loss_rpn_box_reg: 1.2600 (3.7194) time:
-115.9584 data: 0.0419 —– stdout —– Epoch: \[0\] \[240/445\] eta: 2:06:24
-lr: 0.002716 loss: 1.2218 (3.7280)  
-loss_classifier: 0.0007 (0.0525) loss_box_reg: 0.0001 (0.0007)  
-loss_objectness: 0.0009 (0.0380) loss_rpn_box_reg: 1.2207 (3.6368) time:
-180.1180 data: 0.0575 —– stdout —– Epoch: \[0\] \[250/445\] eta: 2:16:37
-lr: 0.002829 loss: 1.8142 (3.6736)  
-loss_classifier: 0.0007 (0.0505) loss_box_reg: 0.0001 (0.0007)  
-loss_objectness: 0.0007 (0.0365) loss_rpn_box_reg: 1.8125 (3.5859) time:
-157.8001 data: 0.0509 —– stdout —– Epoch: \[0\] \[260/445\] eta: 2:07:27
-lr: 0.002941 loss: 1.6318 (3.5919)  
-loss_classifier: 0.0006 (0.0486) loss_box_reg: 0.0001 (0.0006)  
-loss_objectness: 0.0005 (0.0351) loss_rpn_box_reg: 1.6298 (3.5075) time:
-93.6587 data: 0.0339 —– stdout —– Epoch: \[0\] \[270/445\] eta: 1:58:35
-lr: 0.003054 loss: 1.3040 (3.5010)  
-loss_classifier: 0.0005 (0.0468) loss_box_reg: 0.0001 (0.0006)  
-loss_objectness: 0.0003 (0.0339) loss_rpn_box_reg: 1.3028 (3.4198) time:
-23.2967 data: 0.0278 —– stdout —– Epoch: \[0\] \[280/445\] eta: 1:49:59
-lr: 0.003166 loss: 1.6197 (3.4629)  
-loss_classifier: 0.0005 (0.0451) loss_box_reg: 0.0002 (0.0006)  
-loss_objectness: 0.0011 (0.0330) loss_rpn_box_reg: 1.6135 (3.3841) time:
-22.5025 data: 0.0291 —– stdout —– Epoch: \[0\] \[290/445\] eta: 1:41:48
-lr: 0.003279 loss: 1.9159 (3.4018)  
-loss_classifier: 0.0005 (0.0436) loss_box_reg: 0.0002 (0.0006)  
-loss_objectness: 0.0011 (0.0319) loss_rpn_box_reg: 1.9139 (3.3257) time:
-22.4999 data: 0.0285 —– stdout —– Epoch: \[0\] \[300/445\] eta: 1:33:54
-lr: 0.003391 loss: 1.6265 (3.3566)  
-loss_classifier: 0.0004 (0.0422) loss_box_reg: 0.0002 (0.0006)  
-loss_objectness: 0.0003 (0.0309) loss_rpn_box_reg: 1.6257 (3.2830) time:
-22.7762 data: 0.0256 —– stdout —– Epoch: \[0\] \[310/445\] eta: 1:26:02
-lr: 0.003504 loss: 1.3157 (3.2814)  
-loss_classifier: 0.0004 (0.0408) loss_box_reg: 0.0002 (0.0006)  
-loss_objectness: 0.0003 (0.0300) loss_rpn_box_reg: 1.3151 (3.2099) time:
-21.2467 data: 0.0233 —– stdout —– Epoch: \[0\] \[320/445\] eta: 1:18:02
-lr: 0.003616 loss: 1.5974 (3.2630)  
-loss_classifier: 0.0004 (0.0396) loss_box_reg: 0.0003 (0.0006)  
-loss_objectness: 0.0015 (0.0292) loss_rpn_box_reg: 1.5681 (3.1937) time:
-16.4571 data: 0.0221 —– stdout —– Epoch: \[0\] \[330/445\] eta: 1:10:23
-lr: 0.003729 loss: 2.0970 (3.2195)  
-loss_classifier: 0.0004 (0.0384) loss_box_reg: 0.0002 (0.0006)  
-loss_objectness: 0.0004 (0.0283) loss_rpn_box_reg: 2.0959 (3.1522) time:
-13.1626 data: 0.0214 —– stdout —– Epoch: \[0\] \[340/445\] eta: 1:03:03
-lr: 0.003841 loss: 1.4664 (3.1841)  
-loss_classifier: 0.0003 (0.0373) loss_box_reg: 0.0003 (0.0006)  
-loss_objectness: 0.0003 (0.0275) loss_rpn_box_reg: 1.4655 (3.1187) time:
-13.1292 data: 0.0205 —– stdout —– Epoch: \[0\] \[350/445\] eta: 0:56:01
-lr: 0.003954 loss: 1.4350 (3.1474)  
-loss_classifier: 0.0005 (0.0363) loss_box_reg: 0.0004 (0.0006)  
-loss_objectness: 0.0005 (0.0270) loss_rpn_box_reg: 1.4344 (3.0836) time:
-13.1202 data: 0.0215 —– stdout —– Epoch: \[0\] \[360/445\] eta: 0:49:15
-lr: 0.004066 loss: 2.5771 (3.1577)  
-loss_classifier: 0.0004 (0.0353) loss_box_reg: 0.0007 (0.0006)  
-loss_objectness: 0.0005 (0.0263) loss_rpn_box_reg: 2.5583 (3.0956) time:
-13.1855 data: 0.0222 —– stdout —– Epoch: \[0\] \[370/445\] eta: 0:42:44
-lr: 0.004179 loss: 3.8424 (3.1623)  
-loss_classifier: 0.0002 (0.0343) loss_box_reg: 0.0009 (0.0006)  
-loss_objectness: 0.0005 (0.0256) loss_rpn_box_reg: 3.8294 (3.1018) time:
-13.3834 data: 0.0228 —– stdout —– Epoch: \[0\] \[380/445\] eta: 0:36:26
-lr: 0.004291 loss: 1.6415 (3.1093)  
-loss_classifier: 0.0002 (0.0334) loss_box_reg: 0.0008 (0.0006)  
-loss_objectness: 0.0007 (0.0251) loss_rpn_box_reg: 1.6396 (3.0502) time:
-13.2702 data: 0.0247 —– stdout —– Epoch: \[0\] \[390/445\] eta: 0:30:21
-lr: 0.004404 loss: 1.1593 (3.1042)  
-loss_classifier: 0.0002 (0.0326) loss_box_reg: 0.0003 (0.0006)  
-loss_objectness: 0.0006 (0.0244) loss_rpn_box_reg: 1.1582 (3.0466) time:
-13.0649 data: 0.0264 —– stdout —– Epoch: \[0\] \[400/445\] eta: 0:24:27
-lr: 0.004516 loss: 3.4072 (3.1247)  
-loss_classifier: 0.0002 (0.0318) loss_box_reg: 0.0002 (0.0006)  
-loss_objectness: 0.0006 (0.0239) loss_rpn_box_reg: 3.3835 (3.0684) time:
-13.0817 data: 0.0261 —– stdout —– Epoch: \[0\] \[410/445\] eta: 0:18:44
-lr: 0.004629 loss: 3.0871 (3.0998)  
-loss_classifier: 0.0002 (0.0310) loss_box_reg: 0.0003 (0.0006)  
-loss_objectness: 0.0006 (0.0233) loss_rpn_box_reg: 3.0852 (3.0449) time:
-13.0341 data: 0.0262 —– stdout —– Epoch: \[0\] \[420/445\] eta: 0:13:12
-lr: 0.004741 loss: 2.1452 (3.0729)  
-loss_classifier: 0.0002 (0.0303) loss_box_reg: 0.0003 (0.0006)  
-loss_objectness: 0.0006 (0.0228) loss_rpn_box_reg: 2.1442 (3.0192) time:
-13.0322 data: 0.0264 —– stdout —– Epoch: \[0\] \[430/445\] eta: 0:07:48
-lr: 0.004854 loss: 1.3435 (3.0360)  
-loss_classifier: 0.0002 (0.0296) loss_box_reg: 0.0002 (0.0006)  
-loss_objectness: 0.0007 (0.0223) loss_rpn_box_reg: 1.3427 (2.9836) time:
-13.1675 data: 0.0227 —– stdout —– Epoch: \[0\] \[440/445\] eta: 0:02:34
-lr: 0.004966 loss: 1.1867 (3.0013)  
-loss_classifier: 0.0002 (0.0289) loss_box_reg: 0.0002 (0.0006)  
-loss_objectness: 0.0007 (0.0219) loss_rpn_box_reg: 1.1862 (2.9499) time:
-13.3361 data: 0.0213 —– stdout —– Epoch: \[0\] \[444/445\] eta: 0:00:30
-lr: 0.005000 loss: 1.3435 (2.9855)  
-loss_classifier: 0.0002 (0.0287) loss_box_reg: 0.0001 (0.0005)  
-loss_objectness: 0.0006 (0.0217) loss_rpn_box_reg: 1.3427 (2.9346) time:
-13.3004 data: 0.0221 Epoch: \[0\] Total time: 3:47:38 (30.6933 s / it)
+message), as shown by the output from the previous code block.  
 
-    Next, I want to try and load the model from the .pth file saved in the previous code block. The'load_model()' function expects the save directory string of the .pth file, the number of classes (2: background, plate), and the model file name. It returns the model, optimizer, and epoch. I then pass the model to evaluate_model(). I will also type- and shape-check the eval_metrics list returned from evaluate_model for clarity when later creating a function to plot these metrics.\
+Next, I want to try and load the model from the .pth file saved in the
+previous code block. The’load_model()’ function expects the save
+directory string of the .pth file, the number of classes (2: background,
+plate), and the model file name. It returns the model, optimizer, and
+epoch. I then pass the model to evaluate_model(). I will also type- and
+shape-check the eval_metrics list returned from evaluate_model for
+clarity when later creating a function to plot these metrics.  
 
-    ::: {.cell execution_count=24}
-    ``` {.python .cell-code}
-    model, optimizer, epoch = load_model('../checkpoints/', 2, 'checkpoint_epoch_0')
+``` python
+model, optimizer, epoch = load_model('../checkpoints/', 2, 'checkpoint_epoch_0')
 
-    eval_metrics = evaluate_model(model, data_loader_test, device)
+eval_metrics = evaluate_model(model, data_loader_test, device)
 
-    print(eval_metrics, '\n', shape(eval_metrics))
+print(eval_metrics, '\n', shape(eval_metrics))
 
-    print("\n -end-")
-
-<div class="cell-output cell-output-error">
-
-    RuntimeError: Error(s) in loading state_dict for FasterRCNN:
-        Missing key(s) in state_dict: "backbone.body.conv1.weight", "backbone.body.bn1.weight", "backbone.body.bn1.bias", "backbone.body.bn1.running_mean", "backbone.body.bn1.running_var", "backbone.body.layer1.0.conv1.weight", "backbone.body.layer1.0.bn1.weight", "backbone.body.layer1.0.bn1.bias", "backbone.body.layer1.0.bn1.running_mean", "backbone.body.layer1.0.bn1.running_var", "backbone.body.layer1.0.conv2.weight", "backbone.body.layer1.0.bn2.weight", "backbone.body.layer1.0.bn2.bias", "backbone.body.layer1.0.bn2.running_mean", "backbone.body.layer1.0.bn2.running_var", "backbone.body.layer1.0.conv3.weight", "backbone.body.layer1.0.bn3.weight", "backbone.body.layer1.0.bn3.bias", "backbone.body.layer1.0.bn3.running_mean", "backbone.body.layer1.0.bn3.running_var", "backbone.body.layer1.0.downsample.0.weight", "backbone.body.layer1.0.downsample.1.weight", "backbone.body.layer1.0.downsample.1.bias", "backbone.body.layer1.0.downsample.1.running_mean", "backbone.body.layer1.0.downsample.1.running_var", "backbone.body.layer1.1.conv1.weight", "backbone.body.layer1.1.bn1.weight", "backbone.body.layer1.1.bn1.bias", "backbone.body.layer1.1.bn1.running_mean", "backbone.body.layer1.1.bn1.running_var", "backbone.body.layer1.1.conv2.weight", "backbone.body.layer1.1.bn2.weight", "backbone.body.layer1.1.bn2.bias", "backbone.body.layer1.1.bn2.running_mean", "backbone.body.layer1.1.bn2.running_var", "backbone.body.layer1.1.conv3.weight", "backbone.body.layer1.1.bn3.weight", "backbone.body.layer1.1.bn3.bias", "backbone.body.layer1.1.bn3.running_mean", "backbone.body.layer1.1.bn3.running_var", "backbone.body.layer1.2.conv1.weight", "backbone.body.layer1.2.bn1.weight", "backbone.body.layer1.2.bn1.bias", "backbone.body.layer1.2.bn1.running_mean", "backbone.body.layer1.2.bn1.running_var", "backbone.body.layer1.2.conv2.weight", "backbone.body.layer1.2.bn2.weight", "backbone.body.layer1.2.bn2.bias", "backbone.body.layer1.2.bn2.running_mean", "backbone.body.layer1.2.bn2.running_var", "backbone.body.layer1.2.conv3.weight", "backbone.body.layer1.2.bn3.weight", "backbone.body.layer1.2.bn3.bias", "backbone.body.layer1.2.bn3.running_mean", "backbone.body.layer1.2.bn3.running_var", "backbone.body.layer2.0.conv1.weight", "backbone.body.layer2.0.bn1.weight", "backbone.body.layer2.0.bn1.bias", "backbone.body.layer2.0.bn1.running_mean", "backbone.body.layer2.0.bn1.running_var", "backbone.body.layer2.0.conv2.weight", "backbone.body.layer2.0.bn2.weight", "backbone.body.layer2.0.bn2.bias", "backbone.body.layer2.0.bn2.running_mean", "backbone.body.layer2.0.bn2.running_var", "backbone.body.layer2.0.conv3.weight", "backbone.body.layer2.0.bn3.weight", "backbone.body.layer2.0.bn3.bias", "backbone.body.layer2.0.bn3.running_mean", "backbone.body.layer2.0.bn3.running_var", "backbone.body.layer2.0.downsample.0.weight", "backbone.body.layer2.0.downsample.1.weight", "backbone.body.layer2.0.downsample.1.bias", "backbone.body.layer2.0.downsample.1.running_mean", "backbone.body.layer2.0.downsample.1.running_var", "backbone.body.layer2.1.conv1.weight", "backbone.body.layer2.1.bn1.weight", "backbone.body.layer2.1.bn1.bias", "backbone.body.layer2.1.bn1.running_mean", "backbone.body.layer2.1.bn1.running_var", "backbone.body.layer2.1.conv2.weight", "backbone.body.layer2.1.bn2.weight", "backbone.body.layer2.1.bn2.bias", "backbone.body.layer2.1.bn2.running_mean", "backbone.body.layer2.1.bn2.running_var", "backbone.body.layer2.1.conv3.weight", "backbone.body.layer2.1.bn3.weight", "backbone.body.layer2.1.bn3.bias", "backbone.body.layer2.1.bn3.running_mean", "backbone.body.layer2.1.bn3.running_var", "backbone.body.layer2.2.conv1.weight", "backbone.body.layer2.2.bn1.weight", "backbone.body.layer2.2.bn1.bias", "backbone.body.layer2.2.bn1.running_mean", "backbone.body.layer2.2.bn1.running_var", "backbone.body.layer2.2.conv2.weight", "backbone.body.layer2.2.bn2.weight", "backbone.body.layer2.2.bn2.bias", "backbone.body.layer2.2.bn2.running_mean", "backbone.body.layer2.2.bn2.running_var", "backbone.body.layer2.2.conv3.weight", "backbone.body.layer2.2.bn3.weight", "backbone.body.layer2.2.bn3.bias", "backbone.body.layer2.2.bn3.running_mean", "backbone.body.layer2.2.bn3.running_var", "backbone.body.layer2.3.conv1.weight", "backbone.body.layer2.3.bn1.weight", "backbone.body.layer2.3.bn1.bias", "backbone.body.layer2.3.bn1.running_mean", "backbone.body.layer2.3.bn1.running_var", "backbone.body.layer2.3.conv2.weight", "backbone.body.layer2.3.bn2.weight", "backbone.body.layer2.3.bn2.bias", "backbone.body.layer2.3.bn2.running_mean", "backbone.body.layer2.3.bn2.running_var", "backbone.body.layer2.3.conv3.weight", "backbone.body.layer2.3.bn3.weight", "backbone.body.layer2.3.bn3.bias", "backbone.body.layer2.3.bn3.running_mean", "backbone.body.layer2.3.bn3.running_var", "backbone.body.layer3.0.conv1.weight", "backbone.body.layer3.0.bn1.weight", "backbone.body.layer3.0.bn1.bias", "backbone.body.layer3.0.bn1.running_mean", "backbone.body.layer3.0.bn1.running_var", "backbone.body.layer3.0.conv2.weight", "backbone.body.layer3.0.bn2.weight", "backbone.body.layer3.0.bn2.bias", "backbone.body.layer3.0.bn2.running_mean", "backbone.body.layer3.0.bn2.running_var", "backbone.body.layer3.0.conv3.weight", "backbone.body.layer3.0.bn3.weight", "backbone.body.layer3.0.bn3.bias", "backbone.body.layer3.0.bn3.running_mean", "backbone.body.layer3.0.bn3.running_var", "backbone.body.layer3.0.downsample.0.weight", "backbone.body.layer3.0.downsample.1.weight", "backbone.body.layer3.0.downsample.1.bias", "backbone.body.layer3.0.downsample.1.running_mean", "backbone.body.layer3.0.downsample.1.running_var", "backbone.body.layer3.1.conv1.weight", "backbone.body.layer3.1.bn1.weight", "backbone.body.layer3.1.bn1.bias", "backbone.body.layer3.1.bn1.running_mean", "backbone.body.layer3.1.bn1.running_var", "backbone.body.layer3.1.conv2.weight", "backbone.body.layer3.1.bn2.weight", "backbone.body.layer3.1.bn2.bias", "backbone.body.layer3.1.bn2.running_mean", "backbone.body.layer3.1.bn2.running_var", "backbone.body.layer3.1.conv3.weight", "backbone.body.layer3.1.bn3.weight", "backbone.body.layer3.1.bn3.bias", "backbone.body.layer3.1.bn3.running_mean", "backbone.body.layer3.1.bn3.running_var", "backbone.body.layer3.2.conv1.weight", "backbone.body.layer3.2.bn1.weight", "backbone.body.layer3.2.bn1.bias", "backbone.body.layer3.2.bn1.running_mean", "backbone.body.layer3.2.bn1.running_var", "backbone.body.layer3.2.conv2.weight", "backbone.body.layer3.2.bn2.weight", "backbone.body.layer3.2.bn2.bias", "backbone.body.layer3.2.bn2.running_mean", "backbone.body.layer3.2.bn2.running_var", "backbone.body.layer3.2.conv3.weight", "backbone.body.layer3.2.bn3.weight", "backbone.body.layer3.2.bn3.bias", "backbone.body.layer3.2.bn3.running_mean", "backbone.body.layer3.2.bn3.running_var", "backbone.body.layer3.3.conv1.weight", "backbone.body.layer3.3.bn1.weight", "backbone.body.layer3.3.bn1.bias", "backbone.body.layer3.3.bn1.running_mean", "backbone.body.layer3.3.bn1.running_var", "backbone.body.layer3.3.conv2.weight", "backbone.body.layer3.3.bn2.weight", "backbone.body.layer3.3.bn2.bias", "backbone.body.layer3.3.bn2.running_mean", "backbone.body.layer3.3.bn2.running_var", "backbone.body.layer3.3.conv3.weight", "backbone.body.layer3.3.bn3.weight", "backbone.body.layer3.3.bn3.bias", "backbone.body.layer3.3.bn3.running_mean", "backbone.body.layer3.3.bn3.running_var", "backbone.body.layer3.4.conv1.weight", "backbone.body.layer3.4.bn1.weight", "backbone.body.layer3.4.bn1.bias", "backbone.body.layer3.4.bn1.running_mean", "backbone.body.layer3.4.bn1.running_var", "backbone.body.layer3.4.conv2.weight", "backbone.body.layer3.4.bn2.weight", "backbone.body.layer3.4.bn2.bias", "backbone.body.layer3.4.bn2.running_mean", "backbone.body.layer3.4.bn2.running_var", "backbone.body.layer3.4.conv3.weight", "backbone.body.layer3.4.bn3.weight", "backbone.body.layer3.4.bn3.bias", "backbone.body.layer3.4.bn3.running_mean", "backbone.body.layer3.4.bn3.running_var", "backbone.body.layer3.5.conv1.weight", "backbone.body.layer3.5.bn1.weight", "backbone.body.layer3.5.bn1.bias", "backbone.body.layer3.5.bn1.running_mean", "backbone.body.layer3.5.bn1.running_var", "backbone.body.layer3.5.conv2.weight", "backbone.body.layer3.5.bn2.weight", "backbone.body.layer3.5.bn2.bias", "backbone.body.layer3.5.bn2.running_mean", "backbone.body.layer3.5.bn2.running_var", "backbone.body.layer3.5.conv3.weight", "backbone.body.layer3.5.bn3.weight", "backbone.body.layer3.5.bn3.bias", "backbone.body.layer3.5.bn3.running_mean", "backbone.body.layer3.5.bn3.running_var", "backbone.body.layer4.0.conv1.weight", "backbone.body.layer4.0.bn1.weight", "backbone.body.layer4.0.bn1.bias", "backbone.body.layer4.0.bn1.running_mean", "backbone.body.layer4.0.bn1.running_var", "backbone.body.layer4.0.conv2.weight", "backbone.body.layer4.0.bn2.weight", "backbone.body.layer4.0.bn2.bias", "backbone.body.layer4.0.bn2.running_mean", "backbone.body.layer4.0.bn2.running_var", "backbone.body.layer4.0.conv3.weight", "backbone.body.layer4.0.bn3.weight", "backbone.body.layer4.0.bn3.bias", "backbone.body.layer4.0.bn3.running_mean", "backbone.body.layer4.0.bn3.running_var", "backbone.body.layer4.0.downsample.0.weight", "backbone.body.layer4.0.downsample.1.weight", "backbone.body.layer4.0.downsample.1.bias", "backbone.body.layer4.0.downsample.1.running_mean", "backbone.body.layer4.0.downsample.1.running_var", "backbone.body.layer4.1.conv1.weight", "backbone.body.layer4.1.bn1.weight", "backbone.body.layer4.1.bn1.bias", "backbone.body.layer4.1.bn1.running_mean", "backbone.body.layer4.1.bn1.running_var", "backbone.body.layer4.1.conv2.weight", "backbone.body.layer4.1.bn2.weight", "backbone.body.layer4.1.bn2.bias", "backbone.body.layer4.1.bn2.running_mean", "backbone.body.layer4.1.bn2.running_var", "backbone.body.layer4.1.conv3.weight", "backbone.body.layer4.1.bn3.weight", "backbone.body.layer4.1.bn3.bias", "backbone.body.layer4.1.bn3.running_mean", "backbone.body.layer4.1.bn3.running_var", "backbone.body.layer4.2.conv1.weight", "backbone.body.layer4.2.bn1.weight", "backbone.body.layer4.2.bn1.bias", "backbone.body.layer4.2.bn1.running_mean", "backbone.body.layer4.2.bn1.running_var", "backbone.body.layer4.2.conv2.weight", "backbone.body.layer4.2.bn2.weight", "backbone.body.layer4.2.bn2.bias", "backbone.body.layer4.2.bn2.running_mean", "backbone.body.layer4.2.bn2.running_var", "backbone.body.layer4.2.conv3.weight", "backbone.body.layer4.2.bn3.weight", "backbone.body.layer4.2.bn3.bias", "backbone.body.layer4.2.bn3.running_mean", "backbone.body.layer4.2.bn3.running_var", "backbone.fpn.inner_blocks.0.0.weight", "backbone.fpn.inner_blocks.0.1.weight", "backbone.fpn.inner_blocks.0.1.bias", "backbone.fpn.inner_blocks.0.1.running_mean", "backbone.fpn.inner_blocks.0.1.running_var", "backbone.fpn.inner_blocks.1.0.weight", "backbone.fpn.inner_blocks.1.1.weight", "backbone.fpn.inner_blocks.1.1.bias", "backbone.fpn.inner_blocks.1.1.running_mean", "backbone.fpn.inner_blocks.1.1.running_var", "backbone.fpn.inner_blocks.2.0.weight", "backbone.fpn.inner_blocks.2.1.weight", "backbone.fpn.inner_blocks.2.1.bias", "backbone.fpn.inner_blocks.2.1.running_mean", "backbone.fpn.inner_blocks.2.1.running_var", "backbone.fpn.inner_blocks.3.0.weight", "backbone.fpn.inner_blocks.3.1.weight", "backbone.fpn.inner_blocks.3.1.bias", "backbone.fpn.inner_blocks.3.1.running_mean", "backbone.fpn.inner_blocks.3.1.running_var", "backbone.fpn.layer_blocks.0.0.weight", "backbone.fpn.layer_blocks.0.1.weight", "backbone.fpn.layer_blocks.0.1.bias", "backbone.fpn.layer_blocks.0.1.running_mean", "backbone.fpn.layer_blocks.0.1.running_var", "backbone.fpn.layer_blocks.1.0.weight", "backbone.fpn.layer_blocks.1.1.weight", "backbone.fpn.layer_blocks.1.1.bias", "backbone.fpn.layer_blocks.1.1.running_mean", "backbone.fpn.layer_blocks.1.1.running_var", "backbone.fpn.layer_blocks.2.0.weight", "backbone.fpn.layer_blocks.2.1.weight", "backbone.fpn.layer_blocks.2.1.bias", "backbone.fpn.layer_blocks.2.1.running_mean", "backbone.fpn.layer_blocks.2.1.running_var", "backbone.fpn.layer_blocks.3.0.weight", "backbone.fpn.layer_blocks.3.1.weight", "backbone.fpn.layer_blocks.3.1.bias", "backbone.fpn.layer_blocks.3.1.running_mean", "backbone.fpn.layer_blocks.3.1.running_var", "rpn.head.conv.0.0.weight", "rpn.head.conv.0.0.bias", "rpn.head.conv.1.0.weight", "rpn.head.conv.1.0.bias", "rpn.head.cls_logits.weight", "rpn.head.cls_logits.bias", "rpn.head.bbox_pred.weight", "rpn.head.bbox_pred.bias", "roi_heads.box_head.0.0.weight", "roi_heads.box_head.0.1.weight", "roi_heads.box_head.0.1.bias", "roi_heads.box_head.0.1.running_mean", "roi_heads.box_head.0.1.running_var", "roi_heads.box_head.1.0.weight", "roi_heads.box_head.1.1.weight", "roi_heads.box_head.1.1.bias", "roi_heads.box_head.1.1.running_mean", "roi_heads.box_head.1.1.running_var", "roi_heads.box_head.2.0.weight", "roi_heads.box_head.2.1.weight", "roi_heads.box_head.2.1.bias", "roi_heads.box_head.2.1.running_mean", "roi_heads.box_head.2.1.running_var", "roi_heads.box_head.3.0.weight", "roi_heads.box_head.3.1.weight", "roi_heads.box_head.3.1.bias", "roi_heads.box_head.3.1.running_mean", "roi_heads.box_head.3.1.running_var", "roi_heads.box_head.5.weight", "roi_heads.box_head.5.bias", "roi_heads.box_predictor.cls_score.weight", "roi_heads.box_predictor.cls_score.bias", "roi_heads.box_predictor.bbox_pred.weight", "roi_heads.box_predictor.bbox_pred.bias". 
-        Unexpected key(s) in state_dict: "state", "param_groups". 
-    [0;31m---------------------------------------------------------------------------[0m
-    [0;31mRuntimeError[0m                              Traceback (most recent call last)
-    Cell [0;32mIn[23], line 1[0m
-    [0;32m----> 1[0m model, optimizer, epoch [38;5;241m=[39m [43mload_model[49m[43m([49m[38;5;124;43m'[39;49m[38;5;124;43m../checkpoints/[39;49m[38;5;124;43m'[39;49m[43m,[49m[43m [49m[38;5;241;43m2[39;49m[43m,[49m[43m [49m[38;5;124;43m'[39;49m[38;5;124;43mcheckpoint_epoch_0[39;49m[38;5;124;43m'[39;49m[43m)[49m
-    [1;32m      3[0m eval_metrics [38;5;241m=[39m evaluate_model(model, data_loader_test, device)
-    [1;32m      5[0m [38;5;28mprint[39m(eval_metrics, [38;5;124m'[39m[38;5;130;01m\n[39;00m[38;5;124m'[39m, shape(eval_metrics))
-
-    Cell [0;32mIn[12], line 5[0m, in [0;36mload_model[0;34m(save_dir, num_classes, model_file_name)[0m
-    [1;32m      3[0m checkpoint [38;5;241m=[39m torch[38;5;241m.[39mload(save_dir [38;5;241m+[39m [38;5;124mf[39m[38;5;124m'[39m[38;5;132;01m{[39;00mmodel_file_name[38;5;132;01m}[39;00m[38;5;124m.pth[39m[38;5;124m'[39m, weights_only[38;5;241m=[39m[38;5;28;01mTrue[39;00m)
-    [1;32m      4[0m model[38;5;241m.[39mload_state_dict(checkpoint[[38;5;124m'[39m[38;5;124mmodel_state_dict[39m[38;5;124m'[39m])
-    [0;32m----> 5[0m optimizer [38;5;241m=[39m [43mmodel[49m[38;5;241;43m.[39;49m[43mload_state_dict[49m[43m([49m[43mcheckpoint[49m[43m[[49m[38;5;124;43m'[39;49m[38;5;124;43moptimizer_state_dict[39;49m[38;5;124;43m'[39;49m[43m][49m[43m)[49m
-    [1;32m      6[0m epoch [38;5;241m=[39m checkpoint[[38;5;124m'[39m[38;5;124mepoch[39m[38;5;124m'[39m]
-    [1;32m      7[0m [38;5;28;01mreturn[39;00m model, optimizer, epoch
-
-    File [0;32m~/Documents/SC_TSL_15092024_plate_detect/.venv/lib/python3.9/site-packages/torch/nn/modules/module.py:2584[0m, in [0;36mModule.load_state_dict[0;34m(self, state_dict, strict, assign)[0m
-    [1;32m   2576[0m         error_msgs[38;5;241m.[39minsert(
-    [1;32m   2577[0m             [38;5;241m0[39m,
-    [1;32m   2578[0m             [38;5;124m"[39m[38;5;124mMissing key(s) in state_dict: [39m[38;5;132;01m{}[39;00m[38;5;124m. [39m[38;5;124m"[39m[38;5;241m.[39mformat(
-    [1;32m   2579[0m                 [38;5;124m"[39m[38;5;124m, [39m[38;5;124m"[39m[38;5;241m.[39mjoin([38;5;124mf[39m[38;5;124m'[39m[38;5;124m"[39m[38;5;132;01m{[39;00mk[38;5;132;01m}[39;00m[38;5;124m"[39m[38;5;124m'[39m [38;5;28;01mfor[39;00m k [38;5;129;01min[39;00m missing_keys)
-    [1;32m   2580[0m             ),
-    [1;32m   2581[0m         )
-    [1;32m   2583[0m [38;5;28;01mif[39;00m [38;5;28mlen[39m(error_msgs) [38;5;241m>[39m [38;5;241m0[39m:
-    [0;32m-> 2584[0m     [38;5;28;01mraise[39;00m [38;5;167;01mRuntimeError[39;00m(
-    [1;32m   2585[0m         [38;5;124m"[39m[38;5;124mError(s) in loading state_dict for [39m[38;5;132;01m{}[39;00m[38;5;124m:[39m[38;5;130;01m\n[39;00m[38;5;130;01m\t[39;00m[38;5;132;01m{}[39;00m[38;5;124m"[39m[38;5;241m.[39mformat(
-    [1;32m   2586[0m             [38;5;28mself[39m[38;5;241m.[39m[38;5;18m__class__[39m[38;5;241m.[39m[38;5;18m__name__[39m, [38;5;124m"[39m[38;5;130;01m\n[39;00m[38;5;130;01m\t[39;00m[38;5;124m"[39m[38;5;241m.[39mjoin(error_msgs)
-    [1;32m   2587[0m         )
-    [1;32m   2588[0m     )
-    [1;32m   2589[0m [38;5;28;01mreturn[39;00m _IncompatibleKeys(missing_keys, unexpected_keys)
-
-    [0;31mRuntimeError[0m: Error(s) in loading state_dict for FasterRCNN:
-        Missing key(s) in state_dict: "backbone.body.conv1.weight", "backbone.body.bn1.weight", "backbone.body.bn1.bias", "backbone.body.bn1.running_mean", "backbone.body.bn1.running_var", "backbone.body.layer1.0.conv1.weight", "backbone.body.layer1.0.bn1.weight", "backbone.body.layer1.0.bn1.bias", "backbone.body.layer1.0.bn1.running_mean", "backbone.body.layer1.0.bn1.running_var", "backbone.body.layer1.0.conv2.weight", "backbone.body.layer1.0.bn2.weight", "backbone.body.layer1.0.bn2.bias", "backbone.body.layer1.0.bn2.running_mean", "backbone.body.layer1.0.bn2.running_var", "backbone.body.layer1.0.conv3.weight", "backbone.body.layer1.0.bn3.weight", "backbone.body.layer1.0.bn3.bias", "backbone.body.layer1.0.bn3.running_mean", "backbone.body.layer1.0.bn3.running_var", "backbone.body.layer1.0.downsample.0.weight", "backbone.body.layer1.0.downsample.1.weight", "backbone.body.layer1.0.downsample.1.bias", "backbone.body.layer1.0.downsample.1.running_mean", "backbone.body.layer1.0.downsample.1.running_var", "backbone.body.layer1.1.conv1.weight", "backbone.body.layer1.1.bn1.weight", "backbone.body.layer1.1.bn1.bias", "backbone.body.layer1.1.bn1.running_mean", "backbone.body.layer1.1.bn1.running_var", "backbone.body.layer1.1.conv2.weight", "backbone.body.layer1.1.bn2.weight", "backbone.body.layer1.1.bn2.bias", "backbone.body.layer1.1.bn2.running_mean", "backbone.body.layer1.1.bn2.running_var", "backbone.body.layer1.1.conv3.weight", "backbone.body.layer1.1.bn3.weight", "backbone.body.layer1.1.bn3.bias", "backbone.body.layer1.1.bn3.running_mean", "backbone.body.layer1.1.bn3.running_var", "backbone.body.layer1.2.conv1.weight", "backbone.body.layer1.2.bn1.weight", "backbone.body.layer1.2.bn1.bias", "backbone.body.layer1.2.bn1.running_mean", "backbone.body.layer1.2.bn1.running_var", "backbone.body.layer1.2.conv2.weight", "backbone.body.layer1.2.bn2.weight", "backbone.body.layer1.2.bn2.bias", "backbone.body.layer1.2.bn2.running_mean", "backbone.body.layer1.2.bn2.running_var", "backbone.body.layer1.2.conv3.weight", "backbone.body.layer1.2.bn3.weight", "backbone.body.layer1.2.bn3.bias", "backbone.body.layer1.2.bn3.running_mean", "backbone.body.layer1.2.bn3.running_var", "backbone.body.layer2.0.conv1.weight", "backbone.body.layer2.0.bn1.weight", "backbone.body.layer2.0.bn1.bias", "backbone.body.layer2.0.bn1.running_mean", "backbone.body.layer2.0.bn1.running_var", "backbone.body.layer2.0.conv2.weight", "backbone.body.layer2.0.bn2.weight", "backbone.body.layer2.0.bn2.bias", "backbone.body.layer2.0.bn2.running_mean", "backbone.body.layer2.0.bn2.running_var", "backbone.body.layer2.0.conv3.weight", "backbone.body.layer2.0.bn3.weight", "backbone.body.layer2.0.bn3.bias", "backbone.body.layer2.0.bn3.running_mean", "backbone.body.layer2.0.bn3.running_var", "backbone.body.layer2.0.downsample.0.weight", "backbone.body.layer2.0.downsample.1.weight", "backbone.body.layer2.0.downsample.1.bias", "backbone.body.layer2.0.downsample.1.running_mean", "backbone.body.layer2.0.downsample.1.running_var", "backbone.body.layer2.1.conv1.weight", "backbone.body.layer2.1.bn1.weight", "backbone.body.layer2.1.bn1.bias", "backbone.body.layer2.1.bn1.running_mean", "backbone.body.layer2.1.bn1.running_var", "backbone.body.layer2.1.conv2.weight", "backbone.body.layer2.1.bn2.weight", "backbone.body.layer2.1.bn2.bias", "backbone.body.layer2.1.bn2.running_mean", "backbone.body.layer2.1.bn2.running_var", "backbone.body.layer2.1.conv3.weight", "backbone.body.layer2.1.bn3.weight", "backbone.body.layer2.1.bn3.bias", "backbone.body.layer2.1.bn3.running_mean", "backbone.body.layer2.1.bn3.running_var", "backbone.body.layer2.2.conv1.weight", "backbone.body.layer2.2.bn1.weight", "backbone.body.layer2.2.bn1.bias", "backbone.body.layer2.2.bn1.running_mean", "backbone.body.layer2.2.bn1.running_var", "backbone.body.layer2.2.conv2.weight", "backbone.body.layer2.2.bn2.weight", "backbone.body.layer2.2.bn2.bias", "backbone.body.layer2.2.bn2.running_mean", "backbone.body.layer2.2.bn2.running_var", "backbone.body.layer2.2.conv3.weight", "backbone.body.layer2.2.bn3.weight", "backbone.body.layer2.2.bn3.bias", "backbone.body.layer2.2.bn3.running_mean", "backbone.body.layer2.2.bn3.running_var", "backbone.body.layer2.3.conv1.weight", "backbone.body.layer2.3.bn1.weight", "backbone.body.layer2.3.bn1.bias", "backbone.body.layer2.3.bn1.running_mean", "backbone.body.layer2.3.bn1.running_var", "backbone.body.layer2.3.conv2.weight", "backbone.body.layer2.3.bn2.weight", "backbone.body.layer2.3.bn2.bias", "backbone.body.layer2.3.bn2.running_mean", "backbone.body.layer2.3.bn2.running_var", "backbone.body.layer2.3.conv3.weight", "backbone.body.layer2.3.bn3.weight", "backbone.body.layer2.3.bn3.bias", "backbone.body.layer2.3.bn3.running_mean", "backbone.body.layer2.3.bn3.running_var", "backbone.body.layer3.0.conv1.weight", "backbone.body.layer3.0.bn1.weight", "backbone.body.layer3.0.bn1.bias", "backbone.body.layer3.0.bn1.running_mean", "backbone.body.layer3.0.bn1.running_var", "backbone.body.layer3.0.conv2.weight", "backbone.body.layer3.0.bn2.weight", "backbone.body.layer3.0.bn2.bias", "backbone.body.layer3.0.bn2.running_mean", "backbone.body.layer3.0.bn2.running_var", "backbone.body.layer3.0.conv3.weight", "backbone.body.layer3.0.bn3.weight", "backbone.body.layer3.0.bn3.bias", "backbone.body.layer3.0.bn3.running_mean", "backbone.body.layer3.0.bn3.running_var", "backbone.body.layer3.0.downsample.0.weight", "backbone.body.layer3.0.downsample.1.weight", "backbone.body.layer3.0.downsample.1.bias", "backbone.body.layer3.0.downsample.1.running_mean", "backbone.body.layer3.0.downsample.1.running_var", "backbone.body.layer3.1.conv1.weight", "backbone.body.layer3.1.bn1.weight", "backbone.body.layer3.1.bn1.bias", "backbone.body.layer3.1.bn1.running_mean", "backbone.body.layer3.1.bn1.running_var", "backbone.body.layer3.1.conv2.weight", "backbone.body.layer3.1.bn2.weight", "backbone.body.layer3.1.bn2.bias", "backbone.body.layer3.1.bn2.running_mean", "backbone.body.layer3.1.bn2.running_var", "backbone.body.layer3.1.conv3.weight", "backbone.body.layer3.1.bn3.weight", "backbone.body.layer3.1.bn3.bias", "backbone.body.layer3.1.bn3.running_mean", "backbone.body.layer3.1.bn3.running_var", "backbone.body.layer3.2.conv1.weight", "backbone.body.layer3.2.bn1.weight", "backbone.body.layer3.2.bn1.bias", "backbone.body.layer3.2.bn1.running_mean", "backbone.body.layer3.2.bn1.running_var", "backbone.body.layer3.2.conv2.weight", "backbone.body.layer3.2.bn2.weight", "backbone.body.layer3.2.bn2.bias", "backbone.body.layer3.2.bn2.running_mean", "backbone.body.layer3.2.bn2.running_var", "backbone.body.layer3.2.conv3.weight", "backbone.body.layer3.2.bn3.weight", "backbone.body.layer3.2.bn3.bias", "backbone.body.layer3.2.bn3.running_mean", "backbone.body.layer3.2.bn3.running_var", "backbone.body.layer3.3.conv1.weight", "backbone.body.layer3.3.bn1.weight", "backbone.body.layer3.3.bn1.bias", "backbone.body.layer3.3.bn1.running_mean", "backbone.body.layer3.3.bn1.running_var", "backbone.body.layer3.3.conv2.weight", "backbone.body.layer3.3.bn2.weight", "backbone.body.layer3.3.bn2.bias", "backbone.body.layer3.3.bn2.running_mean", "backbone.body.layer3.3.bn2.running_var", "backbone.body.layer3.3.conv3.weight", "backbone.body.layer3.3.bn3.weight", "backbone.body.layer3.3.bn3.bias", "backbone.body.layer3.3.bn3.running_mean", "backbone.body.layer3.3.bn3.running_var", "backbone.body.layer3.4.conv1.weight", "backbone.body.layer3.4.bn1.weight", "backbone.body.layer3.4.bn1.bias", "backbone.body.layer3.4.bn1.running_mean", "backbone.body.layer3.4.bn1.running_var", "backbone.body.layer3.4.conv2.weight", "backbone.body.layer3.4.bn2.weight", "backbone.body.layer3.4.bn2.bias", "backbone.body.layer3.4.bn2.running_mean", "backbone.body.layer3.4.bn2.running_var", "backbone.body.layer3.4.conv3.weight", "backbone.body.layer3.4.bn3.weight", "backbone.body.layer3.4.bn3.bias", "backbone.body.layer3.4.bn3.running_mean", "backbone.body.layer3.4.bn3.running_var", "backbone.body.layer3.5.conv1.weight", "backbone.body.layer3.5.bn1.weight", "backbone.body.layer3.5.bn1.bias", "backbone.body.layer3.5.bn1.running_mean", "backbone.body.layer3.5.bn1.running_var", "backbone.body.layer3.5.conv2.weight", "backbone.body.layer3.5.bn2.weight", "backbone.body.layer3.5.bn2.bias", "backbone.body.layer3.5.bn2.running_mean", "backbone.body.layer3.5.bn2.running_var", "backbone.body.layer3.5.conv3.weight", "backbone.body.layer3.5.bn3.weight", "backbone.body.layer3.5.bn3.bias", "backbone.body.layer3.5.bn3.running_mean", "backbone.body.layer3.5.bn3.running_var", "backbone.body.layer4.0.conv1.weight", "backbone.body.layer4.0.bn1.weight", "backbone.body.layer4.0.bn1.bias", "backbone.body.layer4.0.bn1.running_mean", "backbone.body.layer4.0.bn1.running_var", "backbone.body.layer4.0.conv2.weight", "backbone.body.layer4.0.bn2.weight", "backbone.body.layer4.0.bn2.bias", "backbone.body.layer4.0.bn2.running_mean", "backbone.body.layer4.0.bn2.running_var", "backbone.body.layer4.0.conv3.weight", "backbone.body.layer4.0.bn3.weight", "backbone.body.layer4.0.bn3.bias", "backbone.body.layer4.0.bn3.running_mean", "backbone.body.layer4.0.bn3.running_var", "backbone.body.layer4.0.downsample.0.weight", "backbone.body.layer4.0.downsample.1.weight", "backbone.body.layer4.0.downsample.1.bias", "backbone.body.layer4.0.downsample.1.running_mean", "backbone.body.layer4.0.downsample.1.running_var", "backbone.body.layer4.1.conv1.weight", "backbone.body.layer4.1.bn1.weight", "backbone.body.layer4.1.bn1.bias", "backbone.body.layer4.1.bn1.running_mean", "backbone.body.layer4.1.bn1.running_var", "backbone.body.layer4.1.conv2.weight", "backbone.body.layer4.1.bn2.weight", "backbone.body.layer4.1.bn2.bias", "backbone.body.layer4.1.bn2.running_mean", "backbone.body.layer4.1.bn2.running_var", "backbone.body.layer4.1.conv3.weight", "backbone.body.layer4.1.bn3.weight", "backbone.body.layer4.1.bn3.bias", "backbone.body.layer4.1.bn3.running_mean", "backbone.body.layer4.1.bn3.running_var", "backbone.body.layer4.2.conv1.weight", "backbone.body.layer4.2.bn1.weight", "backbone.body.layer4.2.bn1.bias", "backbone.body.layer4.2.bn1.running_mean", "backbone.body.layer4.2.bn1.running_var", "backbone.body.layer4.2.conv2.weight", "backbone.body.layer4.2.bn2.weight", "backbone.body.layer4.2.bn2.bias", "backbone.body.layer4.2.bn2.running_mean", "backbone.body.layer4.2.bn2.running_var", "backbone.body.layer4.2.conv3.weight", "backbone.body.layer4.2.bn3.weight", "backbone.body.layer4.2.bn3.bias", "backbone.body.layer4.2.bn3.running_mean", "backbone.body.layer4.2.bn3.running_var", "backbone.fpn.inner_blocks.0.0.weight", "backbone.fpn.inner_blocks.0.1.weight", "backbone.fpn.inner_blocks.0.1.bias", "backbone.fpn.inner_blocks.0.1.running_mean", "backbone.fpn.inner_blocks.0.1.running_var", "backbone.fpn.inner_blocks.1.0.weight", "backbone.fpn.inner_blocks.1.1.weight", "backbone.fpn.inner_blocks.1.1.bias", "backbone.fpn.inner_blocks.1.1.running_mean", "backbone.fpn.inner_blocks.1.1.running_var", "backbone.fpn.inner_blocks.2.0.weight", "backbone.fpn.inner_blocks.2.1.weight", "backbone.fpn.inner_blocks.2.1.bias", "backbone.fpn.inner_blocks.2.1.running_mean", "backbone.fpn.inner_blocks.2.1.running_var", "backbone.fpn.inner_blocks.3.0.weight", "backbone.fpn.inner_blocks.3.1.weight", "backbone.fpn.inner_blocks.3.1.bias", "backbone.fpn.inner_blocks.3.1.running_mean", "backbone.fpn.inner_blocks.3.1.running_var", "backbone.fpn.layer_blocks.0.0.weight", "backbone.fpn.layer_blocks.0.1.weight", "backbone.fpn.layer_blocks.0.1.bias", "backbone.fpn.layer_blocks.0.1.running_mean", "backbone.fpn.layer_blocks.0.1.running_var", "backbone.fpn.layer_blocks.1.0.weight", "backbone.fpn.layer_blocks.1.1.weight", "backbone.fpn.layer_blocks.1.1.bias", "backbone.fpn.layer_blocks.1.1.running_mean", "backbone.fpn.layer_blocks.1.1.running_var", "backbone.fpn.layer_blocks.2.0.weight", "backbone.fpn.layer_blocks.2.1.weight", "backbone.fpn.layer_blocks.2.1.bias", "backbone.fpn.layer_blocks.2.1.running_mean", "backbone.fpn.layer_blocks.2.1.running_var", "backbone.fpn.layer_blocks.3.0.weight", "backbone.fpn.layer_blocks.3.1.weight", "backbone.fpn.layer_blocks.3.1.bias", "backbone.fpn.layer_blocks.3.1.running_mean", "backbone.fpn.layer_blocks.3.1.running_var", "rpn.head.conv.0.0.weight", "rpn.head.conv.0.0.bias", "rpn.head.conv.1.0.weight", "rpn.head.conv.1.0.bias", "rpn.head.cls_logits.weight", "rpn.head.cls_logits.bias", "rpn.head.bbox_pred.weight", "rpn.head.bbox_pred.bias", "roi_heads.box_head.0.0.weight", "roi_heads.box_head.0.1.weight", "roi_heads.box_head.0.1.bias", "roi_heads.box_head.0.1.running_mean", "roi_heads.box_head.0.1.running_var", "roi_heads.box_head.1.0.weight", "roi_heads.box_head.1.1.weight", "roi_heads.box_head.1.1.bias", "roi_heads.box_head.1.1.running_mean", "roi_heads.box_head.1.1.running_var", "roi_heads.box_head.2.0.weight", "roi_heads.box_head.2.1.weight", "roi_heads.box_head.2.1.bias", "roi_heads.box_head.2.1.running_mean", "roi_heads.box_head.2.1.running_var", "roi_heads.box_head.3.0.weight", "roi_heads.box_head.3.1.weight", "roi_heads.box_head.3.1.bias", "roi_heads.box_head.3.1.running_mean", "roi_heads.box_head.3.1.running_var", "roi_heads.box_head.5.weight", "roi_heads.box_head.5.bias", "roi_heads.box_predictor.cls_score.weight", "roi_heads.box_predictor.cls_score.bias", "roi_heads.box_predictor.bbox_pred.weight", "roi_heads.box_predictor.bbox_pred.bias". 
-        Unexpected key(s) in state_dict: "state", "param_groups". 
-
-</div>
-
-:::
+print("\n -end-")
+```
 
 This produced an error when loading the model:
 
@@ -1857,10 +1635,10 @@ print("\n -end-")
 
     creating index...
     index created!
-    Test:  [0/5]  eta: 0:00:09  model_time: 1.9188 (1.9188)  evaluator_time: 0.0023 (0.0023)  time: 1.9293  data: 0.0082
-    Test:  [4/5]  eta: 0:00:01  model_time: 1.9424 (1.9325)  evaluator_time: 0.0024 (0.0026)  time: 1.9434  data: 0.0083
-    Test: Total time: 0:00:09 (1.9435 s / it)
-    Averaged stats: model_time: 1.9424 (1.9325)  evaluator_time: 0.0024 (0.0026)
+    Test:  [0/5]  eta: 0:00:09  model_time: 1.9244 (1.9244)  evaluator_time: 0.0035 (0.0035)  time: 1.9359  data: 0.0080
+    Test:  [4/5]  eta: 0:00:01  model_time: 1.9244 (1.9285)  evaluator_time: 0.0023 (0.0028)  time: 1.9396  data: 0.0084
+    Test: Total time: 0:00:09 (1.9398 s / it)
+    Averaged stats: model_time: 1.9244 (1.9285)  evaluator_time: 0.0023 (0.0028)
     Accumulating evaluation results...
     DONE (t=0.00s).
     IoU metric: bbox
@@ -1896,40 +1674,6 @@ optimizer and model deserialisation and variable loading only.
 function signatures. I will try to use these from now on, where
 appropriate. :::
 
-The standard out based on the helper_training_functions defined up to
-this point is:
-
-``` {bash}
-Project root directory: /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/analyses
-Training labels csv file: /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/lib/labels.csv
-Training dataset directory: /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/raw/positives
-creating index...
-index created!
-Test:  [ 0/50]  eta: 0:08:31  model_time: 10.2026 (10.2026)  evaluator_time: 0.0037 (0.0037)  time: 10.2212  data: 0.0148
-Test:  [49/50]  eta: 0:00:10  model_time: 10.2246 (10.6478)  evaluator_time: 0.0047 (0.0055)  time: 10.4892  data: 0.0122
-Test: Total time: 0:08:53 (10.6671 s / it)
-Averaged stats: model_time: 10.2246 (10.6478)  evaluator_time: 0.0047 (0.0055)
-Accumulating evaluation results...
-DONE (t=0.07s).
-IoU metric: bbox
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
- Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.000
- Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.000
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.000
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.000
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.000
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.000
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
-[array([ 0.,  0.,  0., -1.,  0.,  0.,  0.,  0.,  0., -1.,  0.,  0.])] 
- 1
-
- -end-
-```
-
 This output is interesting. Firstly, the loss metrics are missing from
 eval_metrics, yet are output at the end of the previous section. This is
 because the two are handled separately! The evaluate_model() function is
@@ -1963,10 +1707,10 @@ print(eval_metrics, '\n', len(eval_metrics))
 
     creating index...
     index created!
-    Test:  [0/5]  eta: 0:00:09  model_time: 1.9144 (1.9144)  evaluator_time: 0.0024 (0.0024)  time: 1.9251  data: 0.0083
-    Test:  [4/5]  eta: 0:00:01  model_time: 1.9243 (1.9285)  evaluator_time: 0.0024 (0.0026)  time: 1.9395  data: 0.0084
-    Test: Total time: 0:00:09 (1.9396 s / it)
-    Averaged stats: model_time: 1.9243 (1.9285)  evaluator_time: 0.0024 (0.0026)
+    Test:  [0/5]  eta: 0:00:09  model_time: 1.9468 (1.9468)  evaluator_time: 0.0034 (0.0034)  time: 1.9582  data: 0.0080
+    Test:  [4/5]  eta: 0:00:01  model_time: 1.9424 (1.9336)  evaluator_time: 0.0024 (0.0028)  time: 1.9447  data: 0.0083
+    Test: Total time: 0:00:09 (1.9449 s / it)
+    Averaged stats: model_time: 1.9424 (1.9336)  evaluator_time: 0.0024 (0.0028)
     Accumulating evaluation results...
     DONE (t=0.00s).
     IoU metric: bbox
@@ -1982,7 +1726,7 @@ print(eval_metrics, '\n', len(eval_metrics))
      Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
      Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = -1.000
      Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
-    <torchvision_deps.coco_eval.CocoEvaluator object at 0x106eabd90>
+    <torchvision_deps.coco_eval.CocoEvaluator object at 0x393b72910>
     [array([ 0.,  0.,  0., -1., -1.,  0.,  0.,  0.,  0., -1., -1.,  0.])] 
      1
 
@@ -2093,16 +1837,16 @@ print("\n -end-")
     /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
       with torch.cuda.amp.autocast(enabled=scaler is not None):
 
-    Epoch: [0]  [ 0/20]  eta: 0:01:03  lr: 0.000268  loss: 12.6455 (12.6455)  loss_classifier: 0.8115 (0.8115)  loss_box_reg: 0.0013 (0.0013)  loss_objectness: 0.6713 (0.6713)  loss_rpn_box_reg: 11.1614 (11.1614)  time: 3.1718  data: 0.0083
-    Epoch: [0]  [10/20]  eta: 0:00:31  lr: 0.002897  loss: 12.0527 (11.8395)  loss_classifier: 0.6234 (0.5498)  loss_box_reg: 0.0014 (0.0018)  loss_objectness: 0.0994 (0.2061)  loss_rpn_box_reg: 11.0403 (11.0817)  time: 3.1133  data: 0.0104
-    Epoch: [0]  [19/20]  eta: 0:00:03  lr: 0.005000  loss: 10.8148 (10.1502)  loss_classifier: 0.1609 (0.3214)  loss_box_reg: 0.0014 (0.0018)  loss_objectness: 0.0994 (0.1725)  loss_rpn_box_reg: 10.5534 (9.6546)  time: 3.0967  data: 0.0105
-    Epoch: [0] Total time: 0:01:01 (3.0968 s / it)
+    Epoch: [0]  [ 0/20]  eta: 0:01:03  lr: 0.000268  loss: 12.4237 (12.4237)  loss_classifier: 0.5990 (0.5990)  loss_box_reg: 0.0009 (0.0009)  loss_objectness: 0.6623 (0.6623)  loss_rpn_box_reg: 11.1614 (11.1614)  time: 3.1856  data: 0.0083
+    Epoch: [0]  [10/20]  eta: 0:00:31  lr: 0.002897  loss: 11.7836 (11.7514)  loss_classifier: 0.5253 (0.4512)  loss_box_reg: 0.0010 (0.0013)  loss_objectness: 0.0798 (0.1954)  loss_rpn_box_reg: 11.1149 (11.1035)  time: 3.1043  data: 0.0085
+    Epoch: [0]  [19/20]  eta: 0:00:03  lr: 0.005000  loss: 10.8406 (9.5506)  loss_classifier: 0.1546 (0.2672)  loss_box_reg: 0.0009 (0.0012)  loss_objectness: 0.0798 (0.1566)  loss_rpn_box_reg: 10.6052 (9.1256)  time: 3.1181  data: 0.0085
+    Epoch: [0] Total time: 0:01:02 (3.1181 s / it)
     Key: lr      Value: 0.005000
-    Key: loss    Value: 10.8148 (10.1502)
-    Key: loss_classifier     Value: 0.1609 (0.3214)
-    Key: loss_box_reg    Value: 0.0014 (0.0018)
-    Key: loss_objectness     Value: 0.0994 (0.1725)
-    Key: loss_rpn_box_reg    Value: 10.5534 (9.6546)
+    Key: loss    Value: 10.8406 (9.5506)
+    Key: loss_classifier     Value: 0.1546 (0.2672)
+    Key: loss_box_reg    Value: 0.0009 (0.0012)
+    Key: loss_objectness     Value: 0.0798 (0.1566)
+    Key: loss_rpn_box_reg    Value: 10.6052 (9.1256)
     Checkpoint saved: ../checkpoints/checkpoint_epoch_0.pth
 
      -end-
@@ -2323,27 +2067,27 @@ print("\n -end-")
     /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
       with torch.cuda.amp.autocast(enabled=scaler is not None):
 
-    Epoch: [0]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 12.4899 (12.4899)  loss_classifier: 0.5402 (0.5402)  loss_box_reg: 0.0011 (0.0011)  loss_objectness: 0.8216 (0.8216)  loss_rpn_box_reg: 11.1269 (11.1269)  time: 3.0914  data: 0.0097
-    Epoch: [0]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 12.2766 (12.3832)  loss_classifier: 0.5402 (0.5605)  loss_box_reg: 0.0001 (0.0006)  loss_objectness: 0.5051 (0.6634)  loss_rpn_box_reg: 11.1269 (11.1587)  time: 3.0939  data: 0.0100
-    Epoch: [0] Total time: 0:00:06 (3.0943 s / it)
+    Epoch: [0]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 12.5206 (12.5206)  loss_classifier: 0.5886 (0.5886)  loss_box_reg: 0.0010 (0.0010)  loss_objectness: 0.8041 (0.8041)  loss_rpn_box_reg: 11.1269 (11.1269)  time: 3.2670  data: 0.0083
+    Epoch: [0]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 12.2304 (12.3755)  loss_classifier: 0.5504 (0.5695)  loss_box_reg: 0.0003 (0.0006)  loss_objectness: 0.4892 (0.6466)  loss_rpn_box_reg: 11.1269 (11.1587)  time: 3.1919  data: 0.0084
+    Epoch: [0] Total time: 0:00:06 (3.1923 s / it)
 
      Key: lr
      Value: [0.005, 0.005]
 
      Key: loss
-     Value: [12.489860534667969, 12.276588439941406]
+     Value: [12.520604133605957, 12.230426788330078]
 
      Key: loss_classifier
-     Value: [0.5402147173881531, 0.580824613571167]
+     Value: [0.588641345500946, 0.5503923892974854]
 
      Key: loss_box_reg
-     Value: [0.001077381195500493, 0.0001002269855234772]
+     Value: [0.0009540851460769773, 0.00033084696042351425]
 
      Key: loss_objectness
-     Value: [0.821620523929596, 0.5051356554031372]
+     Value: [0.8040609955787659, 0.48918047547340393]
 
      Key: loss_rpn_box_reg
-     Value: [11.126947402954102, 11.19052791595459]
+     Value: [11.126947402954102, 11.190523147583008]
 
      Key: progression
      Value: [50.0, 100.0]
@@ -2351,27 +2095,27 @@ print("\n -end-")
 ![](0002_functional_Faster_R-CNN_files/figure-commonmark/cell-37-output-3.png)
 
     Checkpoint saved: ../checkpoints/checkpoint_epoch_0.pth
-    Epoch: [1]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 11.8229 (11.8229)  loss_classifier: 0.4852 (0.4852)  loss_box_reg: 0.0008 (0.0008)  loss_objectness: 0.0353 (0.0353)  loss_rpn_box_reg: 11.3016 (11.3016)  time: 3.0963  data: 0.0081
-    Epoch: [1]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 11.4432 (11.6330)  loss_classifier: 0.3244 (0.4048)  loss_box_reg: 0.0008 (0.0008)  loss_objectness: 0.0353 (0.0630)  loss_rpn_box_reg: 11.0273 (11.1645)  time: 3.0925  data: 0.0081
-    Epoch: [1] Total time: 0:00:06 (3.0929 s / it)
+    Epoch: [1]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 11.6499 (11.6499)  loss_classifier: 0.4605 (0.4605)  loss_box_reg: 0.0011 (0.0011)  loss_objectness: 0.0217 (0.0217)  loss_rpn_box_reg: 11.1666 (11.1666)  time: 3.0652  data: 0.0083
+    Epoch: [1]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 11.5657 (11.6078)  loss_classifier: 0.3541 (0.4073)  loss_box_reg: 0.0004 (0.0008)  loss_objectness: 0.0217 (0.0376)  loss_rpn_box_reg: 11.1577 (11.1621)  time: 3.0623  data: 0.0082
+    Epoch: [1] Total time: 0:00:06 (3.0627 s / it)
 
      Key: lr
      Value: [0.005, 0.005]
 
      Key: loss
-     Value: [11.822920799255371, 11.443161010742188]
+     Value: [11.64992618560791, 11.565732955932617]
 
      Key: loss_classifier
-     Value: [0.48519137501716614, 0.3243866264820099]
+     Value: [0.46047842502593994, 0.3540639877319336]
 
      Key: loss_box_reg
-     Value: [0.0008287893142551184, 0.0008365183603018522]
+     Value: [0.0011226756032556295, 0.0004258868866600096]
 
      Key: loss_objectness
-     Value: [0.0352933332324028, 0.09060761332511902]
+     Value: [0.021731805056333542, 0.05356663465499878]
 
      Key: loss_rpn_box_reg
-     Value: [11.301607131958008, 11.02733039855957]
+     Value: [11.166593551635742, 11.157676696777344]
 
      Key: progression
      Value: [50.0, 100.0]
@@ -2494,27 +2238,27 @@ print("\n -end-")
     /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
       with torch.cuda.amp.autocast(enabled=scaler is not None):
 
-    Epoch: [0]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 12.6727 (12.6727)  loss_classifier: 0.7144 (0.7144)  loss_box_reg: 0.0036 (0.0036)  loss_objectness: 0.8277 (0.8277)  loss_rpn_box_reg: 11.1269 (11.1269)  time: 3.0891  data: 0.0083
-    Epoch: [0]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 12.4432 (12.5579)  loss_classifier: 0.7144 (0.7327)  loss_box_reg: 0.0023 (0.0030)  loss_objectness: 0.4992 (0.6635)  loss_rpn_box_reg: 11.1269 (11.1587)  time: 3.0938  data: 0.0084
-    Epoch: [0] Total time: 0:00:06 (3.0942 s / it)
+    Epoch: [0]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 12.3663 (12.3663)  loss_classifier: 0.6620 (0.6620)  loss_box_reg: 0.0015 (0.0015)  loss_objectness: 0.5121 (0.5121)  loss_rpn_box_reg: 11.1908 (11.1908)  time: 3.0899  data: 0.0082
+    Epoch: [0]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 12.3663 (12.4675)  loss_classifier: 0.6392 (0.6506)  loss_box_reg: 0.0014 (0.0015)  loss_objectness: 0.5121 (0.6567)  loss_rpn_box_reg: 11.1267 (11.1587)  time: 3.0816  data: 0.0095
+    Epoch: [0] Total time: 0:00:06 (3.0820 s / it)
 
      Key: lr
      Value: [0.005, 0.005]
 
      Key: loss
-     Value: [12.672703742980957, 12.4431734085083]
+     Value: [12.366311073303223, 12.568687438964844]
 
      Key: loss_classifier
-     Value: [0.7143836617469788, 0.7511008381843567]
+     Value: [0.6619576811790466, 0.639175295829773]
 
      Key: loss_box_reg
-     Value: [0.003625859972089529, 0.0023107368033379316]
+     Value: [0.0014553576475009322, 0.0014472275506705046]
 
      Key: loss_objectness
-     Value: [0.8277464509010315, 0.4992375075817108]
+     Value: [0.5121315121650696, 0.801346480846405]
 
      Key: loss_rpn_box_reg
-     Value: [11.126947402954102, 11.190524101257324]
+     Value: [11.190766334533691, 11.126718521118164]
 
      Key: progression
      Value: [50.0, 100.0]
@@ -2522,27 +2266,27 @@ print("\n -end-")
 ![](0002_functional_Faster_R-CNN_files/figure-commonmark/cell-40-output-3.png)
 
     Checkpoint saved: ../checkpoints/checkpoint_epoch_0.pth
-    Epoch: [1]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 11.7420 (11.7420)  loss_classifier: 0.5450 (0.5450)  loss_box_reg: 0.0017 (0.0017)  loss_objectness: 0.0303 (0.0303)  loss_rpn_box_reg: 11.1651 (11.1651)  time: 3.0559  data: 0.0080
-    Epoch: [1]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 11.6501 (11.6961)  loss_classifier: 0.4178 (0.4814)  loss_box_reg: 0.0016 (0.0016)  loss_objectness: 0.0303 (0.0526)  loss_rpn_box_reg: 11.1557 (11.1604)  time: 3.1400  data: 0.0081
-    Epoch: [1] Total time: 0:00:06 (3.1405 s / it)
+    Epoch: [1]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 11.6957 (11.6957)  loss_classifier: 0.4785 (0.4785)  loss_box_reg: 0.0008 (0.0008)  loss_objectness: 0.0364 (0.0364)  loss_rpn_box_reg: 11.1800 (11.1800)  time: 3.0889  data: 0.0081
+    Epoch: [1]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 11.6357 (11.6657)  loss_classifier: 0.3886 (0.4336)  loss_box_reg: 0.0006 (0.0007)  loss_objectness: 0.0364 (0.0644)  loss_rpn_box_reg: 11.1541 (11.1670)  time: 3.0760  data: 0.0081
+    Epoch: [1] Total time: 0:00:06 (3.0764 s / it)
 
      Key: lr
      Value: [0.005, 0.005]
 
      Key: loss
-     Value: [11.741989135742188, 11.650129318237305]
+     Value: [11.695745468139648, 11.635704040527344]
 
      Key: loss_classifier
-     Value: [0.5449751019477844, 0.4178207516670227]
+     Value: [0.47852179408073425, 0.3886285722255707]
 
      Key: loss_box_reg
-     Value: [0.001688504940830171, 0.0016054677544161677]
+     Value: [0.0008158275741152465, 0.0006278154323808849]
 
      Key: loss_objectness
-     Value: [0.03026553988456726, 0.07500243186950684]
+     Value: [0.03643663227558136, 0.09239498525857925]
 
      Key: loss_rpn_box_reg
-     Value: [11.165060043334961, 11.15570068359375]
+     Value: [11.179971694946289, 11.154052734375]
 
      Key: progression
      Value: [50.0, 100.0]
