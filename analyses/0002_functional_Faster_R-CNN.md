@@ -1425,17 +1425,17 @@ print("\n -end-")
     /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
       with torch.cuda.amp.autocast(enabled=scaler is not None):
 
-    Epoch: [0]  [ 0/20]  eta: 0:01:03  lr: 0.000268  loss: 12.4923 (12.4923)  loss_classifier: 0.6538 (0.6538)  loss_box_reg: 0.0006 (0.0006)  loss_objectness: 0.5237 (0.5237)  loss_rpn_box_reg: 11.3143 (11.3143)  time: 3.1821  data: 0.0093
-    Epoch: [0]  [10/20]  eta: 0:00:31  lr: 0.002897  loss: 11.6042 (11.6505)  loss_classifier: 0.2859 (0.3270)  loss_box_reg: 0.0008 (0.0010)  loss_objectness: 0.0797 (0.1952)  loss_rpn_box_reg: 11.2158 (11.1273)  time: 3.1070  data: 0.0087
-    Epoch: [0]  [19/20]  eta: 0:00:03  lr: 0.005000  loss: 10.8635 (9.8729)  loss_classifier: 0.0267 (0.1871)  loss_box_reg: 0.0008 (0.0011)  loss_objectness: 0.0797 (0.1437)  loss_rpn_box_reg: 10.7523 (9.5411)  time: 3.0897  data: 0.0086
-    Epoch: [0] Total time: 0:01:01 (3.0898 s / it)
+    Epoch: [0]  [ 0/20]  eta: 0:01:02  lr: 0.000268  loss: 12.6078 (12.6078)  loss_classifier: 0.9415 (0.9415)  loss_box_reg: 0.0012 (0.0012)  loss_objectness: 0.5661 (0.5661)  loss_rpn_box_reg: 11.0990 (11.0990)  time: 3.1458  data: 0.0116
+    Epoch: [0]  [10/20]  eta: 0:00:30  lr: 0.002897  loss: 11.4155 (11.7304)  loss_classifier: 0.3117 (0.4340)  loss_box_reg: 0.0004 (0.0006)  loss_objectness: 0.0637 (0.2179)  loss_rpn_box_reg: 11.0990 (11.0779)  time: 3.0886  data: 0.0108
+    Epoch: [0]  [19/20]  eta: 0:00:03  lr: 0.005000  loss: 10.7929 (9.5722)  loss_classifier: 0.0273 (0.2473)  loss_box_reg: 0.0005 (0.0008)  loss_objectness: 0.1104 (0.1886)  loss_rpn_box_reg: 10.7129 (9.1356)  time: 3.0855  data: 0.0107
+    Epoch: [0] Total time: 0:01:01 (3.0856 s / it)
     Checkpoint saved: results/checkpoint_epoch_0.pth
     creating index...
     index created!
-    Test:  [0/5]  eta: 0:00:09  model_time: 1.9443 (1.9443)  evaluator_time: 0.0010 (0.0010)  time: 1.9538  data: 0.0085
-    Test:  [4/5]  eta: 0:00:01  model_time: 1.9443 (1.9443)  evaluator_time: 0.0007 (0.0008)  time: 1.9535  data: 0.0084
-    Test: Total time: 0:00:09 (1.9536 s / it)
-    Averaged stats: model_time: 1.9443 (1.9443)  evaluator_time: 0.0007 (0.0008)
+    Test:  [0/5]  eta: 0:00:09  model_time: 1.9824 (1.9824)  evaluator_time: 0.0003 (0.0003)  time: 1.9909  data: 0.0081
+    Test:  [4/5]  eta: 0:00:01  model_time: 1.9563 (1.9679)  evaluator_time: 0.0003 (0.0003)  time: 1.9769  data: 0.0086
+    Test: Total time: 0:00:09 (1.9770 s / it)
+    Averaged stats: model_time: 1.9563 (1.9679)  evaluator_time: 0.0003 (0.0003)
     Accumulating evaluation results...
     DONE (t=0.00s).
     IoU metric: bbox
@@ -1635,10 +1635,10 @@ print("\n -end-")
 
     creating index...
     index created!
-    Test:  [0/5]  eta: 0:00:09  model_time: 1.9244 (1.9244)  evaluator_time: 0.0035 (0.0035)  time: 1.9359  data: 0.0080
-    Test:  [4/5]  eta: 0:00:01  model_time: 1.9244 (1.9285)  evaluator_time: 0.0023 (0.0028)  time: 1.9396  data: 0.0084
-    Test: Total time: 0:00:09 (1.9398 s / it)
-    Averaged stats: model_time: 1.9244 (1.9285)  evaluator_time: 0.0023 (0.0028)
+    Test:  [0/5]  eta: 0:00:09  model_time: 1.9164 (1.9164)  evaluator_time: 0.0044 (0.0044)  time: 1.9293  data: 0.0084
+    Test:  [4/5]  eta: 0:00:01  model_time: 1.9180 (1.9253)  evaluator_time: 0.0024 (0.0030)  time: 1.9370  data: 0.0087
+    Test: Total time: 0:00:09 (1.9371 s / it)
+    Averaged stats: model_time: 1.9180 (1.9253)  evaluator_time: 0.0024 (0.0030)
     Accumulating evaluation results...
     DONE (t=0.00s).
     IoU metric: bbox
@@ -1669,10 +1669,12 @@ functions in different object detection contexts will likely be suited
 to different batching parameters based on variables like dataset size.
 For this reason, I think it’s best load_model() handles loading the
 optimizer and model deserialisation and variable loading only.  
-::: {.callout-note collapse=“true”} I just learned about \*args and
-\*\*kwargs. I think this could help cut down the complexity of the
-function signatures. I will try to use these from now on, where
-appropriate. :::
+
+> [!NOTE]
+>
+> I just learned about \*args and \*\*kwargs. I think this could help
+> cut down the complexity of the function signatures. I will try to use
+> these from now on, where appropriate.
 
 This output is interesting. Firstly, the loss metrics are missing from
 eval_metrics, yet are output at the end of the previous section. This is
@@ -1707,10 +1709,10 @@ print(eval_metrics, '\n', len(eval_metrics))
 
     creating index...
     index created!
-    Test:  [0/5]  eta: 0:00:09  model_time: 1.9468 (1.9468)  evaluator_time: 0.0034 (0.0034)  time: 1.9582  data: 0.0080
-    Test:  [4/5]  eta: 0:00:01  model_time: 1.9424 (1.9336)  evaluator_time: 0.0024 (0.0028)  time: 1.9447  data: 0.0083
-    Test: Total time: 0:00:09 (1.9449 s / it)
-    Averaged stats: model_time: 1.9424 (1.9336)  evaluator_time: 0.0024 (0.0028)
+    Test:  [0/5]  eta: 0:00:09  model_time: 1.9413 (1.9413)  evaluator_time: 0.0044 (0.0044)  time: 1.9542  data: 0.0085
+    Test:  [4/5]  eta: 0:00:01  model_time: 1.9297 (1.9361)  evaluator_time: 0.0024 (0.0030)  time: 1.9477  data: 0.0087
+    Test: Total time: 0:00:09 (1.9479 s / it)
+    Averaged stats: model_time: 1.9297 (1.9361)  evaluator_time: 0.0024 (0.0030)
     Accumulating evaluation results...
     DONE (t=0.00s).
     IoU metric: bbox
@@ -1726,25 +1728,23 @@ print(eval_metrics, '\n', len(eval_metrics))
      Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
      Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = -1.000
      Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
-    <torchvision_deps.coco_eval.CocoEvaluator object at 0x393b72910>
+    <torchvision_deps.coco_eval.CocoEvaluator object at 0x393b5d520>
     [array([ 0.,  0.,  0., -1., -1.,  0.,  0.,  0.,  0., -1., -1.,  0.])] 
      1
 
 The CocoEvaluator class is defined in
 [torchvision_deps](../src/torchvision_deps/coco_eval.py).  
-- Based on the print(eval_metrics) in the former code block, the array
-indexing in plot_eval_metrics needs to be adjusted. ‘eval_metrics’ is a
-one-dimensional array of floats, where each index is one of the 12
-metrics outlined [here](https://cocodataset.org/#detection-eval).
-Currently, I’m treating it like a dict.  
+- ‘eval_metrics’ is a one-dimensional array of floats, where each index
+is one of the 12 metrics outlined
+[here](https://cocodataset.org/#detection-eval).  
 
 - Currently, I’m trying to plot the average loss. While this would be
   okay if I were training for many epochs, that won’t work when trying
-  to create a line plot for one epoch’s training. Instead, I want to
-  plot the metrics as the training or evaluation happens. Currently I am
-  using train_one_epoch() and evaluate() from
-  [engine](../src/torchvision_deps/engine.py) in torchvision_deps. They
-  use PyTorch’s
+  to create a line plot for one epoch’s training to evaluate batch
+  variability. Instead, I want to plot the metrics as the training or
+  evaluation happens. Currently I am using train_one_epoch() and
+  evaluate() from [engine](../src/torchvision_deps/engine.py) in
+  torchvision_deps. They use PyTorch’s
   [MetricLogger](https://pytorch.org/tnt/stable/utils/generated/torchtnt.utils.loggers.MetricLogger.html)
   to store metrics, where ‘log_every()’ method from MetricLogger is
   handling the print frequency of metrics as training/evaluation
@@ -1837,16 +1837,16 @@ print("\n -end-")
     /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
       with torch.cuda.amp.autocast(enabled=scaler is not None):
 
-    Epoch: [0]  [ 0/20]  eta: 0:01:03  lr: 0.000268  loss: 12.4237 (12.4237)  loss_classifier: 0.5990 (0.5990)  loss_box_reg: 0.0009 (0.0009)  loss_objectness: 0.6623 (0.6623)  loss_rpn_box_reg: 11.1614 (11.1614)  time: 3.1856  data: 0.0083
-    Epoch: [0]  [10/20]  eta: 0:00:31  lr: 0.002897  loss: 11.7836 (11.7514)  loss_classifier: 0.5253 (0.4512)  loss_box_reg: 0.0010 (0.0013)  loss_objectness: 0.0798 (0.1954)  loss_rpn_box_reg: 11.1149 (11.1035)  time: 3.1043  data: 0.0085
-    Epoch: [0]  [19/20]  eta: 0:00:03  lr: 0.005000  loss: 10.8406 (9.5506)  loss_classifier: 0.1546 (0.2672)  loss_box_reg: 0.0009 (0.0012)  loss_objectness: 0.0798 (0.1566)  loss_rpn_box_reg: 10.6052 (9.1256)  time: 3.1181  data: 0.0085
-    Epoch: [0] Total time: 0:01:02 (3.1181 s / it)
+    Epoch: [0]  [ 0/20]  eta: 0:01:02  lr: 0.000268  loss: 12.4258 (12.4258)  loss_classifier: 0.5811 (0.5811)  loss_box_reg: 0.0009 (0.0009)  loss_objectness: 0.6824 (0.6824)  loss_rpn_box_reg: 11.1614 (11.1614)  time: 3.1156  data: 0.0082
+    Epoch: [0]  [10/20]  eta: 0:00:30  lr: 0.002897  loss: 11.8263 (11.7723)  loss_classifier: 0.4727 (0.4203)  loss_box_reg: 0.0005 (0.0007)  loss_objectness: 0.1177 (0.2092)  loss_rpn_box_reg: 11.1614 (11.1420)  time: 3.0717  data: 0.0084
+    Epoch: [0]  [19/20]  eta: 0:00:03  lr: 0.005000  loss: 11.1396 (9.8727)  loss_classifier: 0.1504 (0.2493)  loss_box_reg: 0.0009 (0.0009)  loss_objectness: 0.1553 (0.1909)  loss_rpn_box_reg: 10.8364 (9.4315)  time: 3.0739  data: 0.0084
+    Epoch: [0] Total time: 0:01:01 (3.0740 s / it)
     Key: lr      Value: 0.005000
-    Key: loss    Value: 10.8406 (9.5506)
-    Key: loss_classifier     Value: 0.1546 (0.2672)
-    Key: loss_box_reg    Value: 0.0009 (0.0012)
-    Key: loss_objectness     Value: 0.0798 (0.1566)
-    Key: loss_rpn_box_reg    Value: 10.6052 (9.1256)
+    Key: loss    Value: 11.1396 (9.8727)
+    Key: loss_classifier     Value: 0.1504 (0.2493)
+    Key: loss_box_reg    Value: 0.0009 (0.0009)
+    Key: loss_objectness     Value: 0.1553 (0.1909)
+    Key: loss_rpn_box_reg    Value: 10.8364 (9.4315)
     Checkpoint saved: ../checkpoints/checkpoint_epoch_0.pth
 
      -end-
@@ -2067,27 +2067,27 @@ print("\n -end-")
     /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
       with torch.cuda.amp.autocast(enabled=scaler is not None):
 
-    Epoch: [0]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 12.5206 (12.5206)  loss_classifier: 0.5886 (0.5886)  loss_box_reg: 0.0010 (0.0010)  loss_objectness: 0.8041 (0.8041)  loss_rpn_box_reg: 11.1269 (11.1269)  time: 3.2670  data: 0.0083
-    Epoch: [0]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 12.2304 (12.3755)  loss_classifier: 0.5504 (0.5695)  loss_box_reg: 0.0003 (0.0006)  loss_objectness: 0.4892 (0.6466)  loss_rpn_box_reg: 11.1269 (11.1587)  time: 3.1919  data: 0.0084
-    Epoch: [0] Total time: 0:00:06 (3.1923 s / it)
+    Epoch: [0]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 12.6468 (12.6468)  loss_classifier: 0.7012 (0.7012)  loss_box_reg: 0.0005 (0.0005)  loss_objectness: 0.8182 (0.8182)  loss_rpn_box_reg: 11.1269 (11.1269)  time: 3.0095  data: 0.0082
+    Epoch: [0]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 12.3941 (12.5204)  loss_classifier: 0.6852 (0.6932)  loss_box_reg: 0.0004 (0.0004)  loss_objectness: 0.5180 (0.6681)  loss_rpn_box_reg: 11.1269 (11.1587)  time: 3.0428  data: 0.0084
+    Epoch: [0] Total time: 0:00:06 (3.0433 s / it)
 
      Key: lr
      Value: [0.005, 0.005]
 
      Key: loss
-     Value: [12.520604133605957, 12.230426788330078]
+     Value: [12.646781921386719, 12.394085884094238]
 
      Key: loss_classifier
-     Value: [0.588641345500946, 0.5503923892974854]
+     Value: [0.7012020349502563, 0.6852008104324341]
 
      Key: loss_box_reg
-     Value: [0.0009540851460769773, 0.00033084696042351425]
+     Value: [0.00045616409624926746, 0.0003657718771137297]
 
      Key: loss_objectness
-     Value: [0.8040609955787659, 0.48918047547340393]
+     Value: [0.8181761503219604, 0.5180002450942993]
 
      Key: loss_rpn_box_reg
-     Value: [11.126947402954102, 11.190523147583008]
+     Value: [11.126947402954102, 11.190519332885742]
 
      Key: progression
      Value: [50.0, 100.0]
@@ -2095,27 +2095,27 @@ print("\n -end-")
 ![](0002_functional_Faster_R-CNN_files/figure-commonmark/cell-37-output-3.png)
 
     Checkpoint saved: ../checkpoints/checkpoint_epoch_0.pth
-    Epoch: [1]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 11.6499 (11.6499)  loss_classifier: 0.4605 (0.4605)  loss_box_reg: 0.0011 (0.0011)  loss_objectness: 0.0217 (0.0217)  loss_rpn_box_reg: 11.1666 (11.1666)  time: 3.0652  data: 0.0083
-    Epoch: [1]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 11.5657 (11.6078)  loss_classifier: 0.3541 (0.4073)  loss_box_reg: 0.0004 (0.0008)  loss_objectness: 0.0217 (0.0376)  loss_rpn_box_reg: 11.1577 (11.1621)  time: 3.0623  data: 0.0082
-    Epoch: [1] Total time: 0:00:06 (3.0627 s / it)
+    Epoch: [1]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 11.7207 (11.7207)  loss_classifier: 0.5441 (0.5441)  loss_box_reg: 0.0006 (0.0006)  loss_objectness: 0.0165 (0.0165)  loss_rpn_box_reg: 11.1595 (11.1595)  time: 3.0850  data: 0.0080
+    Epoch: [1]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 11.6164 (11.6686)  loss_classifier: 0.4061 (0.4751)  loss_box_reg: 0.0006 (0.0011)  loss_objectness: 0.0165 (0.0358)  loss_rpn_box_reg: 11.1537 (11.1566)  time: 3.0680  data: 0.0081
+    Epoch: [1] Total time: 0:00:06 (3.0684 s / it)
 
      Key: lr
      Value: [0.005, 0.005]
 
      Key: loss
-     Value: [11.64992618560791, 11.565732955932617]
+     Value: [11.720736503601074, 11.616438865661621]
 
      Key: loss_classifier
-     Value: [0.46047842502593994, 0.3540639877319336]
+     Value: [0.5440652966499329, 0.4061011075973511]
 
      Key: loss_box_reg
-     Value: [0.0011226756032556295, 0.0004258868866600096]
+     Value: [0.0006260569207370281, 0.0016004564240574837]
 
      Key: loss_objectness
-     Value: [0.021731805056333542, 0.05356663465499878]
+     Value: [0.01654849201440811, 0.0550597608089447]
 
      Key: loss_rpn_box_reg
-     Value: [11.166593551635742, 11.157676696777344]
+     Value: [11.159496307373047, 11.153677940368652]
 
      Key: progression
      Value: [50.0, 100.0]
@@ -2238,24 +2238,24 @@ print("\n -end-")
     /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
       with torch.cuda.amp.autocast(enabled=scaler is not None):
 
-    Epoch: [0]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 12.3663 (12.3663)  loss_classifier: 0.6620 (0.6620)  loss_box_reg: 0.0015 (0.0015)  loss_objectness: 0.5121 (0.5121)  loss_rpn_box_reg: 11.1908 (11.1908)  time: 3.0899  data: 0.0082
-    Epoch: [0]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 12.3663 (12.4675)  loss_classifier: 0.6392 (0.6506)  loss_box_reg: 0.0014 (0.0015)  loss_objectness: 0.5121 (0.6567)  loss_rpn_box_reg: 11.1267 (11.1587)  time: 3.0816  data: 0.0095
-    Epoch: [0] Total time: 0:00:06 (3.0820 s / it)
+    Epoch: [0]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 12.3348 (12.3348)  loss_classifier: 0.6417 (0.6417)  loss_box_reg: 0.0010 (0.0010)  loss_objectness: 0.5013 (0.5013)  loss_rpn_box_reg: 11.1908 (11.1908)  time: 3.0861  data: 0.0085
+    Epoch: [0]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 12.3348 (12.4753)  loss_classifier: 0.6417 (0.6614)  loss_box_reg: 0.0010 (0.0010)  loss_objectness: 0.5013 (0.6541)  loss_rpn_box_reg: 11.1267 (11.1587)  time: 3.0687  data: 0.0083
+    Epoch: [0] Total time: 0:00:06 (3.0691 s / it)
 
      Key: lr
      Value: [0.005, 0.005]
 
      Key: loss
-     Value: [12.366311073303223, 12.568687438964844]
+     Value: [12.334750175476074, 12.615803718566895]
 
      Key: loss_classifier
-     Value: [0.6619576811790466, 0.639175295829773]
+     Value: [0.6416637301445007, 0.6811650395393372]
 
      Key: loss_box_reg
-     Value: [0.0014553576475009322, 0.0014472275506705046]
+     Value: [0.0010343082249164581, 0.0009719447698444128]
 
      Key: loss_objectness
-     Value: [0.5121315121650696, 0.801346480846405]
+     Value: [0.5012856125831604, 0.8069483041763306]
 
      Key: loss_rpn_box_reg
      Value: [11.190766334533691, 11.126718521118164]
@@ -2266,27 +2266,27 @@ print("\n -end-")
 ![](0002_functional_Faster_R-CNN_files/figure-commonmark/cell-40-output-3.png)
 
     Checkpoint saved: ../checkpoints/checkpoint_epoch_0.pth
-    Epoch: [1]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 11.6957 (11.6957)  loss_classifier: 0.4785 (0.4785)  loss_box_reg: 0.0008 (0.0008)  loss_objectness: 0.0364 (0.0364)  loss_rpn_box_reg: 11.1800 (11.1800)  time: 3.0889  data: 0.0081
-    Epoch: [1]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 11.6357 (11.6657)  loss_classifier: 0.3886 (0.4336)  loss_box_reg: 0.0006 (0.0007)  loss_objectness: 0.0364 (0.0644)  loss_rpn_box_reg: 11.1541 (11.1670)  time: 3.0760  data: 0.0081
-    Epoch: [1] Total time: 0:00:06 (3.0764 s / it)
+    Epoch: [1]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 11.7130 (11.7130)  loss_classifier: 0.5131 (0.5131)  loss_box_reg: 0.0007 (0.0007)  loss_objectness: 0.0065 (0.0065)  loss_rpn_box_reg: 11.1927 (11.1927)  time: 3.0646  data: 0.0083
+    Epoch: [1]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 11.5915 (11.6522)  loss_classifier: 0.3629 (0.4380)  loss_box_reg: 0.0006 (0.0007)  loss_objectness: 0.0065 (0.0419)  loss_rpn_box_reg: 11.1507 (11.1717)  time: 3.0588  data: 0.0083
+    Epoch: [1] Total time: 0:00:06 (3.0592 s / it)
 
      Key: lr
      Value: [0.005, 0.005]
 
      Key: loss
-     Value: [11.695745468139648, 11.635704040527344]
+     Value: [11.7129545211792, 11.591525077819824]
 
      Key: loss_classifier
-     Value: [0.47852179408073425, 0.3886285722255707]
+     Value: [0.5130922794342041, 0.3628943860530853]
 
      Key: loss_box_reg
-     Value: [0.0008158275741152465, 0.0006278154323808849]
+     Value: [0.0007480976055376232, 0.0006361767300404608]
 
      Key: loss_objectness
-     Value: [0.03643663227558136, 0.09239498525857925]
+     Value: [0.006455163471400738, 0.07725988328456879]
 
      Key: loss_rpn_box_reg
-     Value: [11.179971694946289, 11.154052734375]
+     Value: [11.192659378051758, 11.150734901428223]
 
      Key: progression
      Value: [50.0, 100.0]
