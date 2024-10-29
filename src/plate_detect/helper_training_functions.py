@@ -110,6 +110,7 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
     model.train()
     # Initialize lists to store metrics
     losses_across_epochs = defaultdict(list)
+    evaluation_across_epochs = defaultdict(list)
     
     # and a learning rate scheduler
     lr_scheduler = torch.optim.lr_scheduler.StepLR(
@@ -133,12 +134,20 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
 
         # Save checkpoint
         save_checkpoint(model, optimizer, epoch + precedent_epoch, (save_dir + 'checkpoints'))
-        
+
+        # Evaluate model perfomance on holdout dataset and append results to evaluation metric dictionary with epoch as key
+        eval_metrics = evaluate_model(model, data_loader_test, device)
+        evaluation_across_epochs[f'{epoch}'] = eval_metrics
+
         # Update the learning rate
         lr_scheduler.step()
 
+    # adding a print statement here to view evaluation_across_epochs using dict comprehension
+    {print(k, '\n', v) for k, v in evaluation_across_epochs.items()}
+
     # plot average train losses across several epochs
     plot_train_losses_across_epochs(save_dir, precedent_epoch, num_epochs, **{k: v for k, v in losses_across_epochs.items()})
+    plot_eval_metrics(save_dir, precedent_epoch, num_epochs, **{k: v for k, v in evaluation_across_epochs.items()})
     return num_epochs + precedent_epoch
 
 
@@ -218,39 +227,24 @@ def plot_prediction(model, dataset, device, index: int, save_dir: str):
     plt.savefig(f'{index}.png', bbox_inches='tight') # tight removes whitespace
 
 
-def plot_eval_metrics(eval_metrics, epoch):
-    plt.figure(figsize=(15, 10))
+def plot_eval_metrics(save_dir, precedent_epoch, num_epochs, **kwargs):
+    progression = [k for k in kwargs] # should be equivalent to num_epochs - precedent_epoch
 
-    # Plot mAP@[0.5:0.95]
-    plt.subplot(2, 2, 2)
-    map_values = [metrics[0] for metrics in eval_metrics]
-    plt.plot(map_values, label='mAP@[0.5:0.95]')
-    plt.title('mAP@[0.5:0.95] over epochs')
-    plt.xlabel('Epoch')
-    plt.ylabel('mAP')
-    plt.legend()
+    # store metrics of interest in lists
+    AP = [v[0] for k, v in kwargs.items()] 
+    AR = [v[8] for k, v in kwargs.items()]
     
-    # Plot mAP@0.5
-    plt.subplot(2, 2, 3)
-    map50_values = [metrics[1] for metrics in eval_metrics]
-    plt.plot(map50_values, label='mAP@0.5')
-    plt.title('mAP@0.5 over epochs')
-    plt.xlabel('Epoch')
-    plt.ylabel('mAP')
+    plt.figure(figsize=(10, 6))
+    plt.plot(progression, AP, label='AP @ IoU 0.50:0.95, area=all, maxDets=100')
+    plt.plot(progression, AR, label='AR @ IoU 0.50:0.95, area=all, maxDets=100')
+
+    plt.xlabel('Epochs')
+    plt.ylabel('Value')
+  
+    plt.title(f'Evaluation Metrics from Epoch {precedent_epoch}-{precedent_epoch + num_epochs}')
     plt.legend()
-    
-    # Plot mAR@[0.5:0.95]
-    plt.subplot(2, 2, 4)
-    mar_values = [metrics[8] for metrics in eval_metrics]
-    plt.plot(mar_values, label='mAR@[0.5:0.95]')
-    plt.title('mAR@[0.5:0.95] over epochs')
-    plt.xlabel('Epoch')
-    plt.ylabel('mAR')
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.savefig(f'training_metrics_epoch_{epoch}.png')
+    plt.grid(False)
+    plt.savefig(f'{save_dir}/results/evaluation_metrics_epochs_{precedent_epoch}-{precedent_epoch + num_epochs}')
     plt.show()
-    plt.close()
 
 
