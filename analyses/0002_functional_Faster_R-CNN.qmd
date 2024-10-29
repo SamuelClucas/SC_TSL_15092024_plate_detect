@@ -1700,7 +1700,7 @@ data_loader = torch.utils.data.DataLoader(
 )
 
 data_loader_test = torch.utils.data.DataLoader(
-    dataset_train,
+    dataset_validation,
     batch_size=1,
     shuffle=True,
     collate_fn=utils.collate_fn
