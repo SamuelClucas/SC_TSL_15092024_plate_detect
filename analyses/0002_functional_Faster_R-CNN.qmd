@@ -1681,7 +1681,7 @@ epoch = train(model, data_loader, data_loader_test, device, num_epochs, preceden
 print("\n -end-")
 ```
 
-This code seems to work without any overt error. Now, I want to train for 15 epochs on the whole positives dataset (445 without augmentation). At this point, I delete the checkpoints and results from the debugging I have been doing (they should be overwritten anyway).
+This code seems to work without any overt error. Now, I want to train for 15 epochs on the whole positives dataset (495 without augmentation, reduced to 445 after subsetting a holdout set of size 50). At this point, I delete the checkpoints and results from the debugging I have been doing (they should be overwritten anyway).
 
 ```{python}
 # split the dataset in train and test set
