@@ -1,0 +1,2682 @@
+# Implementing a Functional Faster R-CNN Model
+
+9/10/24
+
+## Introduction: 
+
+There are numerous object detection model architectures available.  
+Typically, they comprise: a convolutional module used for feature
+extraction; some mechanism for identifying Regions of Interest (ROIs)
+(for example, by [selective
+search](https://link.springer.com/article/10.1007/s11263-013-0620-5), or
+by a \[Region Proposal Network\] (RPN) that uses ‘anchors’ and is
+integrated within the model); and classification/masking/bounding box
+regression heads.  
+Chosen somewhat arbitrarily, I will first code and train a Faster R-CNN
+architecture. There are others that might be worth exploring (e.g., You
+Only Look Once (YOLO), Single-Shot Detector(SSD)), but I think
+implementing the former is more realistic given my inexperience with
+deep machine learning frameworks prior to this project.  
+
+### Goal: 
+
+Develop a functional initial object detection pipeline using a Faster
+R-CNN model trained on the dataset created in [analysis
+0001](0001_dataset_creation.md) to facilitate the [imaging
+system’s](https://github.com/SamuelClucas/SC_TSL_06082024_imaging_system_design)
+recognition of and navigation to growth plates inside the incubator.  
+
+### Hypothesis: 
+
+Can a Faster R-CNN model trained on [this](../raw/) dataset identify and
+label plates with bounding boxes in a validation subset with a mean
+Average Precision (mAP) of greater than 50%, based on an Intersection
+over Union (IoU) metric.  
+
+### Rationale: 
+
+Real-time object detection using the Faster R-CNN architecture has been
+robustly established in the literature ([Shaoqing Ren et al.,
+2016](https://proceedings.neurips.cc/paper/2015/file/14bfa6bb14875e45bba028a21ed38046-Paper.pdf),[Yu
+Liu, 2018](https://ieeexplore.ieee.org/abstract/document/8695451),
+[Wenze Li,
+2021](https://iopscience.iop.org/article/10.1088/1742-6596/1827/1/012085/meta)).  
+
+Based on reading of the [Universal Approximation
+Theorem](https://mitliagkas.github.io/ift6085-2020/ift-6085-lecture-10-notes.pdf),
+I think it is reasonable to posit that given sufficient, representative,
+and clear training data, the network should be abe to detect plates in
+images to at least some degree of accuracy. The question is whether or
+not this accuracy is high enough to be practically useful.  
+
+### Experimental Plan: 
+
+- I will use PyTorch. Firstly, I need to write two custom dataset
+  classes to handle storing and accessing images and their corresponding
+  bounding box vertices for both the positives and negatives datasets
+  (the latter to be used in [hard negatives
+  mining](https://www.ecva.net/papers/eccv_2020/papers_ECCV/papers/123590120.pdf)
+  to further optimise the model).  
+- Once instantiated, this class is passed to PyTorch’s DataLoader for
+  training or evaluation, as outlined in this [pytorch
+  tutorial](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html).
+  I would like to write a helper_training_functions src file to be
+  imported in training scripts to keep the latter concise and
+  readable.  
+- Training on the cluster requires that scripts don’t need to download
+  files at runtime. This will require a local Faster R-CNN class
+  definition file.  
+- [ResNet50](https://blog.roboflow.com/what-is-resnet-50/#:~:text=One%20such%20architecture%20is%20called,it%2C%20and%20categorize%20them%20accordingly.)‘s
+  COCO or ImageNet pre-trained weights aren’t going to be useful. This
+  is common sense. ’Non-lambertian’ or transparent objects form a
+  minority within these datasets, which isn’t helpful in training a
+  network to recognise an object that is transparent. For this reason, I
+  will train a ResNet backbone (I’m not sure many layers this will have,
+  perhaps 50-layer or 101-layer) on a transparent object dataset.
+  Google’s
+  [cleargrasp](https://github.com/Shreeyak/cleargrasp/tree/master)
+  project required the creation of [transparent object
+  datasets](https://sites.google.com/view/transparent-objects). I will
+  train the network on these first, with the hopes that the backbone
+  will then be primed to extract features typical of transparent
+  objects.  
+- I will then freeze the backbone weights prior to training of the RPN
+  layer, and the classification and bounding box regression heads. This
+  model will undergo evaluation to answer the hypothesis.  
+
+## Creating a Dataset Class: Plate_Image_Dataset() 
+
+*Note:*  
+I used
+[this](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html)
+Pytorch tutorial as a launchpoint. As per the tutorial, I downloaded
+several helper functions available on Pytorch vision’s github.  
+
+Why not just import them into scripts through the torchvision library?  
+- See fmassa’s comment
+[here](https://github.com/pytorch/vision/issues/2254).
+
+If you install the package as described in the project
+[README](../README.md), they have already been installed under
+[src/torchvision_deps/](../src/torchvision_deps/) and can be imported
+into scripts.  
+
+For reference, I have included wget commands for each below:
+
+``` {bash}
+#| eval: false
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/engine.py 
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/utils.py
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/coco_utils.py
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/coco_eval.py
+wget https://raw.githubusercontent.com/pytorch/vision/main/references/detection/transforms.py
+```
+
+### Class Overview:
+
+#### Imports…
+
+``` python
+import os
+from torchvision_deps import engine
+import re
+from glob import glob
+import numpy as np
+import pandas as pd
+from torchvision.io import read_image
+import torch
+from torchvision.transforms.v2 import functional as F
+from torchvision import tv_tensors
+from collections.abc import Sequence # for type hints like 'tuple[]': https://docs.python.org/3/library/typing.html
+```
+
+#### Defining the constructor…
+
+``` python
+class Plate_Image_Dataset(torch.utils.data.Dataset):
+    def __init__(self, annotations_file: str, img_dir: str, transforms=None):
+        self.img_labels: pd.Dataframe = pd.read_csv(annotations_file) # bounding box vertices' coordinates
+        self.boxes: np.array[int] = None
+
+        self.img_files: list[str] = [f for f in glob(img_dir + "/*.png")]
+        self.transforms = transforms
+```
+
+**Breakdown:**  
+- ‘Plate_Image_Dataset’ is a custom dataset that represents a map from
+keys/indices to data samples, hence inherits from PyTorch’s provided
+abstract class
+‘[torch.utils.data.Dataset](https://pytorch.org/docs/stable/data.html#torch.utils.data.Dataset)’.  
+- Initialise ‘self.img_labels’ as as a [pandas
+DataFrame](https://pandas.pydata.org/docs/reference/api/pandas.DataFrame.html),
+reading from the csv file containing bounding box vertex coordinates
+passed to the constructor as a string in ‘annotations_file’.  
+- Declare ‘self.boxes’ as a [numpy
+array](https://numpy.org/doc/stable/reference/generated/numpy.array.html)
+of integers, later to be used to store all bounding boxes associated
+with an image (using an index) in **getitem**.  
+- Initialise ‘self.img_files’ as a list of strings, using
+[glob](https://docs.python.org/3/library/glob.html) to find all images
+(pathnames ending in .png) at the image dataset directory passed to the
+constructor as a string in ‘img_dir’. The notation \[f for f in…\] is a
+concise way to create lists in python (see [list
+comprehension](https://docs.python.org/3/tutorial/datastructures.html#list-comprehensions)).  
+- Initialise ‘self.transforms’ as transforms passed the constructor. The
+default is None. See PyTorch’s transforms documentation
+[here](https://pytorch.org/vision/master/transforms.html#transforms).  
+
+#### Defining **len**…
+
+``` python
+class Plate_Image_Dataset(Plate_Image_Dataset):
+    def __len__(self) -> int:
+        return len(self.img_files)
+```
+
+- Just returns the number of image files in the dataset as an integer.  
+
+#### Defining **getitem**…
+
+``` python
+class Plate_Image_Dataset(Plate_Image_Dataset):
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, tv_tensors.Image]: 
+        # loads images and bounding boxes
+        img: torch.Tensor = read_image(self.img_files[idx]) # uint8
+        
+        # get digits from self.img_labels eg. ymaxs = '[ymax1, ymax2, ymax3]' returned from pd.DataFrame
+        x1 = [int(item) for item in re.findall(r'\d+', str(self.img_labels['xmins'][idx]))]
+        y1 = [int(item) for item in re.findall(r'\d+', str(self.img_labels['ymins'][idx]))]
+        x2 = [int(item) for item in re.findall(r'\d+', str(self.img_labels['xmaxs'][idx]))]
+        y2 = [int(item) for item in re.findall(r'\d+', str(self.img_labels['ymaxs'][idx]))]
+
+        num_objs = len(x1)
+        # this class is for the positives dataset, and so every image has at least one labelled bounding box, hence should be tensor of ones shape [N]
+        labels = torch.ones((num_objs,), dtype=torch.int64) 
+
+        # boxes expected shape [N, 4] Tensor x1, y1, x2, y2 where 0 <= x1 < x2 same for y1 and y2 [row = boxes, columns: x1y1x2y2]
+        self.boxes = [[x1[i], y1[i], x2[i], y2[i]] for i in range(num_objs)]
+       
+        # one BoundingBoxes instance per sample, "{img": img, "bbox": BoundingBoxes(...)}" where BoundingBoxes contains all the bounding box vertices associated with that image in the form x1, y1,x2, y2
+        self.boxes = torch.from_numpy(np.array(self.boxes)) # [N, 4] tensor
+        
+        image_id = idx
+
+        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
+
+        area = (self.boxes[:, 3] - self.boxes[:, 1]) * (self.boxes[:, 2] - self.boxes[:, 0]) 
+
+        # tv.tensors is tensor of images with associated metadata
+        img = tv_tensors.Image(img)
+        target = {}
+        target["boxes"] = tv_tensors.BoundingBoxes(self.boxes, format="XYXY", canvas_size=F.get_size(img))
+        target["labels"] = labels
+        target["image_id"] = image_id
+        target["area"] = area
+        target["iscrowd"] = iscrowd
+        
+        if self.transforms is not None:
+            img = self.transforms(img)
+            target["boxes"] = self.transforms(target["boxes"])
+        
+        return img, target
+```
+
+**Breakdown:**  
+- I’m not particularly familiar with indexing pandas DataFrames. I used
+python’s [regular expression
+operations](https://docs.python.org/3/library/re.html) to extract digits
+(‘\d’) from the dataframe at a given index. Using isdigit() doesn’t work
+(for example, iterating through ‘200’ with isdigit() would return ‘2’,
+‘0’, ‘0’). I struggled to use pandas ‘loc’ indexing attribute. I may
+return to this to do so.  
+- **getitem** must return a tuple as specified in the tutorial. Here,
+img is of subclass of
+[tv.Tensor](https://pytorch.org/vision/master/tv_tensors.html) ([an
+image stored as a 3D
+matrix/tensor](https://discuss.pytorch.org/t/what-is-image-really/151290)).
+This tensor should be of shape \[3, H, W\], where 3 is the number of
+channels. Target is a dict with the following fields:  
+- “boxes”: another
+[tv.Tensor](https://pytorch.org/vision/master/tv_tensors.html) subclass
+with shape \[N, 4\] where N is the number of bounding boxes associated
+with the image at the index being ‘got’. Columns are x1, y1, x2, y2,
+where 0 \<= x1 \< x2 (same for y1 and y2). This is specified by
+‘format’.  
+- “labels”: class labels (here 0 for background, 1 for ‘plate’) of type
+int64.  
+- “image_id”: image index in dataset of type int64.  
+- “area”: float torch.Tensor of shape \[N\]. The area of the bounding
+box. This is used by coco_eval in
+[src/torchvision_deps](../src/torchvision_deps/) to separate metric
+scores for small, medium and large boxes.  
+- “iscrowd”: int64 torch.Tensor of shape \[N\]. Instances with
+iscrowd=True are ignored during evaluation. This doesn’t really serve a
+purpose other than to prevent errors popping up when using the
+[torchvision_deps](../src/torchvision_deps/). I plan to either extricate
+it from the dependencies so that it can be removed from the dataset
+class. For now, it is always initialised as a tensor of zeros using
+[torch.zeros](https://pytorch.org/docs/stable/generated/torch.zeros.html).  
+- wrapping image tensors and bounding boxes in TVTensor subclasses
+allows for application of torchvision [built-in
+transformations](https://pytorch.org/vision/stable/transforms.html).
+Based on the TVTensor subclass wrapping the object, the tranforms
+dispatch the object to the appropriate implementation (as described
+[here](https://pytorch.org/vision/main/auto_examples/transforms/plot_transforms_getting_started.html#what-are-tvtensors)).  
+- in the tutorial, img and target are passed to trainsforms together and
+returned as a tuple. For some reason, I could not get it to work this
+way. I suspect it is something to do with the types of the fields of
+target not all being TVTensors. Regardless, I pass boxes and img to
+transforms separately, then return them from **getitem** as a tuple.
+Hopefully this isn’t behaving unexpectedly in the torchvision deps -
+unit tests necessary to confirm this.  
+
+## Creating a ‘helper_training_functions’ Module:
+
+I created numerous helper functions for import into training/evaluation
+scripts. They are defined as a module inside
+[plate_detect](../src/plate_detect/helper_training_functions.py). The
+most recent version of ‘helper_training_functions’ can be imported into
+scripts like so:  
+
+``` python
+from plate_detect import helper_training_functions
+```
+
+Within this analysis, however, I define each function locally as I
+iteratively rewrite them during debugging.  
+\### Programme Overview:
+
+#### Imports:
+
+``` python
+from torchvision_deps.engine import evaluate # in scripts, you should import train_one_epoch also here 
+import re
+from glob import glob
+import numpy as np
+import pandas as pd
+from torchvision.io import read_image
+import torch
+from torchvision.transforms.v2 import functional as F
+from torchvision import tv_tensors
+import matplotlib.pyplot as plt
+from pathlib import Path
+from typing import Dict, Union
+from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2, FastRCNNPredictor, FasterRCNN_ResNet50_FPN_V2_Weights
+import torchvision_deps.T_and_utils.utils as utils 
+import PIL
+from torchvision.utils import draw_bounding_boxes
+import torchvision
+import torch.nn as nn
+from torch.utils.tensorboard import SummaryWriter
+import matplotlib.pyplot as plt
+```
+
+#### Get Faster R-CNN model instance for object detection…
+
+``` python
+def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_fpn_v2:
+    # New weights with accuracy 80.858%
+    weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT # alias is .DEFAULT suffix, weights = None is random initialisation, box MAP 46.7, params, 43.7M, GFLOPS 280.37 https://github.com/pytorch/vision/pull/5763
+    model = fasterrcnn_resnet50_fpn_v2(weights=weights, box_score_thresh=0.0001)
+    preprocess = weights.transforms()
+    # finetuning pretrained model by transfer learning
+    # get num of input features for classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+    # replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_class)
+    return model, preprocess
+```
+
+**Breakdown:**  
+- this approach requires permissions to download the model file from the
+internet (through ‘torch.utils.model_zoo.load_url()’). For this reason,
+it is not amenable to training on the cluster. This will be addressed in
+analysis 0003, using a local Faster R-CNN with ResNet backbone class
+definition. Otherwise, this function still works.  
+- See pytorch’s documentation on [ResNet50 faster R-CNN
+backbone](https://pytorch.org/vision/stable/models/generated/torchvision.models.detection.fasterrcnn_resnet50_fpn.html).
+
+#### Save epoch, model and optimizer state_dict in checkpoint dict:
+
+``` python
+def save_checkpoint(model, optimizer, epoch, save_dir):
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+    
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }
+    
+    filename = f'checkpoint_epoch_{epoch}.pth'
+    save_path = os.path.join(save_dir, filename)
+    torch.save(checkpoint, save_path)
+    print(f"Checkpoint saved: {save_path}")
+```
+
+**Breakdown:**  
+- Creates a directory if it doesn’t exist to store the checkpoints.  
+- Saves the current epoch number, model parameters (weights), and
+optimizer state to a dictionary.  
+- This allows for resuming training from a specific epoch in case of
+interruptions.  
+
+#### Training function:
+
+> [!NOTE]
+>
+> *Note:* This function uses train_one_epoch() from
+> [engine.py](../src/torchvision_deps/engine.py) in torchvision_deps.
+> Engine.py uses the MetricLogger and SmoothedValue classes defined in
+> [utils.py](../src/torchvision_deps/T_and_utils/utils.py) I may later
+> modify these, and so I define them locally prior to these
+> modifications here preserve their development through time.
+>
+> ``` python
+> import datetime
+> import errno
+> import os
+> import time
+> from collections import defaultdict, deque
+>
+> import torch
+> import torch.distributed as dist
+>
+>
+> class SmoothedValue:
+>     """Track a series of values and provide access to smoothed values over a
+>     window or the global series average.
+>     """
+>
+>     def __init__(self, window_size=20, fmt=None):
+>         if fmt is None:
+>             fmt = "{median:.4f} ({global_avg:.4f})"
+>         self.deque = deque(maxlen=window_size)
+>         self.total = 0.0
+>         self.count = 0
+>         self.fmt = fmt
+>
+>     def update(self, value, n=1):
+>         self.deque.append(value)
+>         self.count += n
+>         self.total += value * n
+>
+>     def synchronize_between_processes(self):
+>         """
+>         Warning: does not synchronize the deque!
+>         """
+>         if not is_dist_avail_and_initialized():
+>             return
+>         t = torch.tensor([self.count, self.total], dtype=torch.float64, device="cuda")
+>         dist.barrier()
+>         dist.all_reduce(t)
+>         t = t.tolist()
+>         self.count = int(t[0])
+>         self.total = t[1]
+>
+>     @property
+>     def median(self):
+>         d = torch.tensor(list(self.deque))
+>         return d.median().item()
+>
+>     @property
+>     def avg(self):
+>         d = torch.tensor(list(self.deque), dtype=torch.float32)
+>         return d.mean().item()
+>
+>     @property
+>     def global_avg(self):
+>         return self.total / self.count
+>
+>     @property
+>     def max(self):
+>         return max(self.deque)
+>
+>     @property
+>     def value(self):
+>         return self.deque[-1]
+>
+>     def __str__(self):
+>         return self.fmt.format(
+>             median=self.median, avg=self.avg, global_avg=self.global_avg, max=self.max, value=self.value
+>         )
+>
+>
+> def all_gather(data):
+>     """
+>     Run all_gather on arbitrary picklable data (not necessarily tensors)
+>     Args:
+>         data: any picklable object
+>     Returns:
+>         list[data]: list of data gathered from each rank
+>     """
+>     world_size = get_world_size()
+>     if world_size == 1:
+>         return [data]
+>     data_list = [None] * world_size
+>     dist.all_gather_object(data_list, data)
+>     return data_list
+>
+>
+> def reduce_dict(input_dict, average=True):
+>     """
+>     Args:
+>         input_dict (dict): all the values will be reduced
+>         average (bool): whether to do average or sum
+>     Reduce the values in the dictionary from all processes so that all processes
+>     have the averaged results. Returns a dict with the same fields as
+>     input_dict, after reduction.
+>     """
+>     world_size = get_world_size()
+>     if world_size < 2:
+>         return input_dict
+>     with torch.inference_mode():
+>         names = []
+>         values = []
+>         # sort the keys so that they are consistent across processes
+>         for k in sorted(input_dict.keys()):
+>             names.append(k)
+>             values.append(input_dict[k])
+>         values = torch.stack(values, dim=0)
+>         dist.all_reduce(values)
+>         if average:
+>             values /= world_size
+>         reduced_dict = {k: v for k, v in zip(names, values)}
+>     return reduced_dict
+>
+> class MetricLogger:
+>     def __init__(self, delimiter="\t"):
+>         self.meters = defaultdict(SmoothedValue)
+>         self.delimiter = delimiter
+>
+>     def update(self, **kwargs):
+>         for k, v in kwargs.items():
+>             if isinstance(v, torch.Tensor):
+>                 v = v.item()
+>             assert isinstance(v, (float, int))
+>             self.meters[k].update(v)
+>
+>     def __getattr__(self, attr):
+>         if attr in self.meters:
+>             return self.meters[attr]
+>         if attr in self.__dict__:
+>             return self.__dict__[attr]
+>         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{attr}'")
+>
+>     def __str__(self):
+>         loss_str = []
+>         for name, meter in self.meters.items():
+>             loss_str.append(f"{name}: {str(meter)}")
+>         return self.delimiter.join(loss_str)
+>
+>     def synchronize_between_processes(self):
+>         for meter in self.meters.values():
+>             meter.synchronize_between_processes()
+>
+>     def add_meter(self, name, meter):
+>         self.meters[name] = meter
+>
+>     def log_every(self, iterable, print_freq, header=None):
+>         i = 0
+>         if not header:
+>             header = ""
+>         start_time = time.time()
+>         end = time.time()
+>         iter_time = SmoothedValue(fmt="{avg:.4f}")
+>         data_time = SmoothedValue(fmt="{avg:.4f}")
+>         space_fmt = ":" + str(len(str(len(iterable)))) + "d"
+>         if torch.cuda.is_available():
+>             log_msg = self.delimiter.join(
+>                 [
+>                     header,
+>                     "[{0" + space_fmt + "}/{1}]",
+>                     "eta: {eta}",
+>                     "{meters}",
+>                     "time: {time}",
+>                     "data: {data}",
+>                     "max mem: {memory:.0f}",
+>                 ]
+>             )
+>         else:
+>             log_msg = self.delimiter.join(
+>                 [header, "[{0" + space_fmt + "}/{1}]", "eta: {eta}", "{meters}", "time: {time}", "data: {data}"]
+>             )
+>         MB = 1024.0 * 1024.0
+>         for obj in iterable:
+>             data_time.update(time.time() - end)
+>             yield obj
+>             iter_time.update(time.time() - end)
+>             if i % print_freq == 0 or i == len(iterable) - 1:
+>                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
+>                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+>                 if torch.cuda.is_available():
+>                     print(
+>                         log_msg.format(
+>                             i,
+>                             len(iterable),
+>                             eta=eta_string,
+>                             meters=str(self),
+>                             time=str(iter_time),
+>                             data=str(data_time),
+>                             memory=torch.cuda.max_memory_allocated() / MB,
+>                         )
+>                     )
+>                 else:
+>                     print(
+>                         log_msg.format(
+>                             i, len(iterable), eta=eta_string, meters=str(self), time=str(iter_time), data=str(data_time)
+>                         )
+>                     )
+>             i += 1
+>             end = time.time()
+>         total_time = time.time() - start_time
+>         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+>         print(f"{header} Total time: {total_time_str} ({total_time / len(iterable):.4f} s / it)")
+> ```
+>
+> ``` python
+> import math
+> import sys
+> import time
+>
+> import torch
+> import torchvision.models.detection.mask_rcnn
+> from torchvision_deps.T_and_utils import utils
+> from torchvision_deps.coco_eval import CocoEvaluator
+> from torchvision_deps.coco_utils import get_coco_api_from_dataset
+>
+>
+> def train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq, scaler=None):
+>     model.train()
+>     metric_logger = MetricLogger(delimiter="  ") # normally this would be utils.MetricLogger, but I'm using the MetricLogger defined in this quarto document
+>     metric_logger.add_meter("lr", utils.SmoothedValue(window_size=1, fmt="{value:.6f}"))
+>     header = f"Epoch: [{epoch}]"
+>
+>     lr_scheduler = None
+>     if epoch == 0:
+>         warmup_factor = 1.0 / 1000
+>         warmup_iters = min(1000, len(data_loader) - 1)
+>
+>         lr_scheduler = torch.optim.lr_scheduler.LinearLR(
+>             optimizer, start_factor=warmup_factor, total_iters=warmup_iters
+>         )
+>
+>     for images, targets in metric_logger.log_every(data_loader, print_freq, header):
+>         images = list(image.to(device) for image in images)
+>         targets = [{k: v.to(device) if isinstance(v, torch.Tensor) else v for k, v in t.items()} for t in targets]
+>         with torch.cuda.amp.autocast(enabled=scaler is not None):
+>             loss_dict = model(images, targets)
+>             losses = sum(loss for loss in loss_dict.values())
+>
+>         # reduce losses over all GPUs for logging purposes
+>         loss_dict_reduced = utils.reduce_dict(loss_dict)
+>         losses_reduced = sum(loss for loss in loss_dict_reduced.values())
+>
+>         loss_value = losses_reduced.item()
+>
+>         if not math.isfinite(loss_value):
+>             print(f"Loss is {loss_value}, stopping training")
+>             print(loss_dict_reduced)
+>             sys.exit(1)
+>
+>         optimizer.zero_grad()
+>         if scaler is not None:
+>             scaler.scale(losses).backward()
+>             scaler.step(optimizer)
+>             scaler.update()
+>         else:
+>             losses.backward()
+>             optimizer.step()
+>
+>         if lr_scheduler is not None:
+>             lr_scheduler.step()
+>
+>         metric_logger.update(loss=losses_reduced, **loss_dict_reduced)
+>         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
+>
+>     return metric_logger
+>
+>
+> def _get_iou_types(model):
+>     model_without_ddp = model
+>     if isinstance(model, torch.nn.parallel.DistributedDataParallel):
+>         model_without_ddp = model.module
+>     iou_types = ["bbox"]
+>     if isinstance(model_without_ddp, torchvision.models.detection.MaskRCNN):
+>         iou_types.append("segm")
+>     if isinstance(model_without_ddp, torchvision.models.detection.KeypointRCNN):
+>         iou_types.append("keypoints")
+>     return iou_types
+>
+>
+> @torch.inference_mode()
+> def evaluate(model, data_loader, device):
+>     n_threads = torch.get_num_threads()
+>     # FIXME remove this and make paste_masks_in_image run on the GPU
+>     torch.set_num_threads(1)
+>     cpu_device = torch.device("cpu")
+>     model.eval()
+>     metric_logger = utils.MetricLogger(delimiter="  ")
+>     header = "Test:"
+>
+>     coco = get_coco_api_from_dataset(data_loader.dataset)
+>     iou_types = _get_iou_types(model)
+>     coco_evaluator = CocoEvaluator(coco, iou_types)
+>
+>     for images, targets in metric_logger.log_every(data_loader, 100, header):
+>         images = list(img.to(device) for img in images)
+>
+>         if torch.cuda.is_available():
+>             torch.cuda.synchronize()
+>         model_time = time.time()
+>         outputs = model(images)
+>
+>         outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+>         model_time = time.time() - model_time
+>
+>         res = {target["image_id"]: output for target, output in zip(targets, outputs)}
+>         evaluator_time = time.time()
+>         coco_evaluator.update(res)
+>         evaluator_time = time.time() - evaluator_time
+>         metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
+>
+>     # gather the stats from all processes
+>     metric_logger.synchronize_between_processes()
+>     print("Averaged stats:", metric_logger)
+>     coco_evaluator.synchronize_between_processes()
+>
+>     # accumulate predictions from all images
+>     coco_evaluator.accumulate()
+>     coco_evaluator.summarize()
+>     torch.set_num_threads(n_threads)
+>     return coco_evaluator
+> ```
+
+``` python
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir): 
+    model.train()
+
+    # Initialize lists to store metrics
+    train_losses = []
+
+     # construct an optimizer
+    params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.SGD(
+        params,
+        lr=0.005,
+        momentum=0.9,
+        weight_decay=0.0005
+    )
+    # and a learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=3,
+        gamma=0.1
+    )
+
+    for epoch in range(num_epochs):
+    # train for one epoch, printing every 10 iterations
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+    
+    # Get the average loss for this epoch
+        epoch_loss = metric_logger.meters['loss'].global_avg
+        train_losses.append(epoch_loss)
+
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
+        
+        # Update the learning rate
+        lr_scheduler.step()
+
+    return num_epochs + precedent_epoch, train_losses
+```
+
+**Breakdown:**  
+Setting the Model to Training Mode:  
+- model.train() sets the model to training mode. This is crucial because
+certain layers (like dropout and batch normalization) behave differently
+during training versus evaluation.  
+
+Optimizer Construction:  
+- The optimizer is created using Stochastic Gradient Descent (SGD) with
+a learning rate of 0.005, momentum of 0.9, and weight decay for
+regularization (also known as [L2
+regularisation](https://arxiv.org/pdf/2310.04415)).  
+- params filters the model’s parameters to include only those that
+require gradients (trainable parameters).  
+
+Learning Rate Scheduler:  
+- A learning rate scheduler (StepLR) is initialized, which reduces the
+learning rate by a factor of gamma (0.1) every step_size epochs (3
+epochs in this case). This helps improve convergence as training
+progresses.  
+
+Epoch Loop:  
+- The outer loop iterates over the number of specified epochs
+(num_epochs).  
+
+Training for One Epoch:  
+- train_one_epoch(…) is a function from
+[engine.py](../src/torchvision_deps/engine.py) that handles the training
+logic for one epoch. It processes batches from the data_loader, computes
+losses, and updates model weights.  
+- The print_freq parameter controls how often training progress is
+printed (every 10 iterations).  
+
+Logging Loss:  
+- The average loss for the epoch is extracted from metric_logger, which
+tracks various metrics during training.  
+
+Checkpoint Saving:  
+- After each epoch, a checkpoint is saved using the save_checkpoint
+function. This allows for resuming from the last epoch in case of
+interruption.  
+
+Metrics Plotting:  
+- The function plot_eval_metrics is called to visualize training losses
+over epochs.  
+
+Learning Rate Update:  
+- After the epoch, the learning rate is updated according to the
+scheduler.  
+
+Return Values:  
+- The function returns the final epoch number (adjusted for any
+precedent epochs) and the list of training losses.  
+
+#### Load a model from a .pth file:
+
+``` python
+def load_model(save_dir: str, num_classes: int, model_file_name: str):
+    model, preprocess = get_model_instance_object_detection(num_classes)
+    checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer = model.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    return model, optimizer, epoch
+```
+
+**Breakdown:**  
+- Loads a model from a .pth file. See the pytorch documentation
+[here](https://pytorch.org/tutorials/beginner/saving_loading_models.html).  
+- The weights and biases of a model are accessed by model.parameters().
+A state_dict is a dictionary object that maps each layer to its
+parameter tensor. Both the model and optimiser have state_dicts, and
+both are saved by the save_checkpoint helper function.  
+- Returns the model, optimizer and epoch.  
+
+#### Evaluate a model’s performance after training:
+
+``` python
+def evaluate_model(model, data_loader_test: torch.utils.data.DataLoader, device: torch.cuda.device): 
+    val_metrics = []
+    model.eval()
+
+    coco_evaluator = evaluate(model, data_loader_test, device=device)
+        
+    # Extract evaluation metrics
+    eval_stats = coco_evaluator.coco_eval['bbox'].stats
+    val_metrics.append(eval_stats)
+    return val_metrics
+```
+
+**Breakdown:**  
+- Sets the model to evaluation mode using model.eval(), which alters the
+behavior of certain layers.  
+- In training mode, the model expects input tensors (images) and targets
+(list of dictionary containing bounding boxes \[N, 4\], with vertices in
+the format \[x1, y1, x2, y2\] and class labels in the format
+Int64Tensor\[N\] where N is the number of bounding boxes in a given
+image, or the number of distinct classes, respectively).  
+- Currently using [coco_eval](../src/torchvision_deps/).  
+- See device class docs
+[here](https://pytorch.org/docs/stable/generated/torch.cuda.device.html)  
+- Makes a call to [engine’s](../src/torchvision_deps/engine.py)
+evaluator() to perform COCO-style evaluation on the test dataset, shown
+below:  
+
+``` python
+@torch.inference_mode()
+def evaluate(model, data_loader, device):
+    n_threads = torch.get_num_threads()
+    # FIXME remove this and make paste_masks_in_image run on the GPU
+    torch.set_num_threads(1)
+    cpu_device = torch.device("cpu")
+    model.eval()
+    metric_logger = utils.MetricLogger(delimiter="  ") # MetricLogger: https://pytorch.org/tnt/stable/utils/generated/torchtnt.utils.loggers.MetricLogger.html
+    header = "Test:"
+
+    coco = get_coco_api_from_dataset(data_loader.dataset)
+    iou_types = _get_iou_types(model)
+    coco_evaluator = CocoEvaluator(coco, iou_types)
+
+    for images, targets in metric_logger.log_every(data_loader, 100, header):
+        images = list(img.to(device) for img in images)
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+        model_time = time.time()
+        outputs = model(images)
+
+        outputs = [{k: v.to(cpu_device) for k, v in t.items()} for t in outputs]
+        model_time = time.time() - model_time
+
+        res = {target["image_id"]: output for target, output in zip(targets, outputs)}
+        evaluator_time = time.time()
+        coco_evaluator.update(res)
+        evaluator_time = time.time() - evaluator_time
+        metric_logger.update(model_time=model_time, evaluator_time=evaluator_time)
+
+    # gather the stats from all processes
+    metric_logger.synchronize_between_processes()
+    print("Averaged stats:", metric_logger)
+    coco_evaluator.synchronize_between_processes()
+
+    # accumulate predictions from all images
+    coco_evaluator.accumulate()
+    coco_evaluator.summarize()
+    torch.set_num_threads(n_threads)
+    return coco_evaluator
+```
+
+- COCO provides thorough documentation
+  [here](https://cocodataset.org/#detection-eval).
+- coco_evaluator.summarize() computes Average Precision (AP), AP Across
+  Scales, Average Recall (AR), AR Across Scales (see a dicussion of
+  these metrics
+  [here](https://blog.zenggyu.com/posts/en/2018-12-16-an-introduction-to-evaluation-metrics-for-object-detection/index.html)).
+
+#### Using PyTorch hooks to get backbone feature maps:
+
+``` python
+def get_feature_maps(model, input_image, target_layer_name: torch.nn):
+    feature_maps = {} # stores activations passed to forward_hook
+    
+    def hook_fn(module, input, output):
+        feature_maps[module] = output.detach()
+    return hook_fn # calls handle.remove() to remove the added hook
+    
+    # Register hooks for the layers to be visualised
+    for name, module in model.backbone.named_modules():
+        if isinstance(module, target_layer_name): # type examples: nn.Conv2d, nn.BatchNorm2d, nn.ReLU
+            module.register_forward_hook(hook_fn(module))
+    
+    # Forward pass
+    with torch.no_grad(): # disables loss gradient calculation: https://discuss.pytorch.org/t/with-torch-no-grad/130146
+        model([input_image])
+    
+    return feature_maps
+```
+
+**Breakdown:**  
+- In order to extract intermediate activations from model layers,
+PyTorch provides ‘hooks’. [Pytorch documentation on
+hooks](https://pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.register_forward_hook)
+is quite sparse, but
+[this](https://web.stanford.edu/~nanbhas/blog/forward-hooks-pytorch/)
+blog is quite useful.  
+- Gets the feature maps for every target layer (target_layer_name) in
+each named module in the model’s backbone (e.g., ‘Sequential’,
+‘Bottleneck’). Target layers are documented
+[here](https://pytorch.org/docs/stable/nn.html#convolution-layers).  
+
+#### Plot feature maps:
+
+``` python
+def visualize_feature_maps(feature_maps, num_features=64):
+    for layer, feature_map in feature_maps.items():
+        # Get the first image in the batch
+        feature_map = feature_map[0]
+        
+        # Plot up to num_features feature maps
+        num_features = min(feature_map.size(0), num_features)
+        
+        fig, axs = plt.subplots(8, 8, figsize=(20, 20))
+        fig.suptitle(f'Feature Maps for Layer: {layer}')
+        
+        for i in range(num_features):
+            ax = axs[i // 8, i % 8]
+            ax.imshow(feature_map[i].cpu(), cmap='gray')
+            ax.axis('off')
+        
+        plt.tight_layout()
+        plt.show()
+```
+
+**Breakdown:**  
+- This function takes the feature maps collected from the
+get_feature_maps function and visualizes them.  
+- It plots up to num_features from each layer’s output, providing visual
+insights into what features the model is learning at different levels.
+
+#### Superimpose and plot bounding boxes on image:
+
+``` python
+def plot_prediction(model, dataset, device, index, save_dir: str):
+    img, target = dataset[index]
+    num_epochs = 1
+    print_freq = 10  
+
+    model = load_model(save_dir)
+    with torch.no_grad():
+        image = img
+        image = image[:3, ...].to(device)
+        predictions = model([image, ])
+        pred = predictions[0]
+
+    image = image[:3, ...]
+    pred_boxes = pred["boxes"].long()
+    output_image = draw_bounding_boxes(image, pred_boxes, colors="red")
+    plt.figure(figsize=(12, 12))
+    plt.imshow(output_image.permute(1, 2, 0))
+    plt.savefig(f'{index}.png', bbox_inches='tight') # tight removes whitespace
+```
+
+**Breakdown:**  
+- Loads a specific image from the dataset and runs it through the model
+to get predictions.  
+- Superimposes the predicted bounding boxes on the original image (as a
+red outlined bounding box) and visualises the result.  
+
+## Debugging ‘helper_training_functions’ by Implementation in a Script:
+
+Having written the code necessary to instantiate, train, and evaluate a
+ResNet50 model, I need to evaluate its performance over several epochs.
+This will help to validate the code functions as intended, and to guide
+future development.  
+
+Here, I attempt to setup, train, and evaluate a Resnet50 Faster R-CNN
+model for 10 epochs - using src/Plate_Image_Dataset.py and
+src/helper_training_functions.py - then evaluate its mean average
+precision and recall, to be visualised in a line graph.  
+
+The implementation focuses on validating the core functionality of the
+object detection pipeline before scaling up to full training runs.  
+
+This script uses code from the following src files:  
+-
+src/[Plate_Image_Dataset.py](../src/plate_detect/Plate_Image_Dataset.py) -
+custom class that handles storing and accessing images and their
+corresponding bounding box vertices.  
+-
+src/[helper_training_functions.py](../src/plate_detect/helper_training_functions.py) -
+a group of useful helper functions I’ve written. For example,
+‘get_model_instance_object_detection’ should return a
+[ResNet50](https://pytorch.org/hub/pytorch_vision_resnet/) backbone
+([ImageNet1K_V2
+weights](https://pytorch.org/vision/0.18/models/generated/torchvision.models.resnet50.html#:~:text=By%20default%2C%20no%20pre%2Dtrained%20weights%20are%20used.)),
+with a Region Proposal Network, as well as classifier and bounding box
+regression heads.
+
+It may also be helpful to visualise the model architecture. There are
+libraries for this, one of which is
+‘[pytorchviz](https://github.com/szagoruyko/pytorchviz)’. If useful, I
+will create such a script
+[here](docs/scripts/inspect_architecture.qmd).  
+
+For reference, here is a useful [pytorch
+tutorial](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html).  
+
+### Programme Overview:
+
+#### Imports:
+
+``` python
+from plate_detect import Plate_Image_Dataset #, helper_training_functions # in scripts, this is imported. Here, to document the debug process, I am using the iterations of these functions defined locally in the previous section
+import torch
+from torchvision.transforms.v2 import functional as F
+from pathlib import Path
+from typing import Dict, Union
+from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2, FastRCNNPredictor, FasterRCNN_ResNet50_FPN_V2_Weights
+from torchvision.transforms import v2 as T
+import torchvision_deps.T_and_utils.utils as utils
+from torchvision_deps.engine import evaluate # normally, import train_one_epoch from engine here
+import os
+import matplotlib.pyplot as plt
+import matplotlib.patches as patches
+import numpy as np
+import PIL
+from torchvision.utils import draw_bounding_boxes
+from torchvision.io import read_image
+from torch import nn
+```
+
+**Notes:** when running on the cluster, change any import statements for
+packages defined within the project directory (see [src](../src/)). Here
+is an example:
+
+``` python
+from src import Plate_Image_Dataset, helper_training_functions
+# to...
+from SC_plate_detect.plate_detect import PLate_Image_Dataset, helper_training_functions
+```
+
+#### Setting up directories and instantiating model…
+
+``` python
+device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+
+project_dir_root: Path= Path.cwd() # 'SC_TSL_15092024_Plate_Detect/' type PosixPath for UNIX, WindowsPath for windows...
+print(f'Project root directory: {str(project_dir_root)}')
+
+annotations_file: Path = project_dir_root.parents[0].joinpath('lib', 'labels.csv')
+print(f'Training labels csv file: {annotations_file}')
+
+img_dir: Path= project_dir_root.parents[0].joinpath('raw', 'positives')  # 'SC_TSL_15092024_Plate_Detect/train/images/positives/' on UNIX systems
+print(f'Training dataset directory: {img_dir}')
+
+num_class: int = 2 # plate or background
+ 
+# creates resnet50 v2 faster r cnn model with new head for class classification
+
+model, preprocess = get_model_instance_object_detection(num_class) # see next comment for how this function is called when imported 
+# model, preprocess = helper_training_functions.get_model_instance_object_detection(num_class)
+
+# move model to the right device
+model.to(device)
+```
+
+    Project root directory: /Users/cla24mas/Documents/SC_TSL_15092024_plate_detect/analyses
+    Training labels csv file: /Users/cla24mas/Documents/SC_TSL_15092024_plate_detect/lib/labels.csv
+    Training dataset directory: /Users/cla24mas/Documents/SC_TSL_15092024_plate_detect/raw/positives
+
+    FasterRCNN(
+      (transform): GeneralizedRCNNTransform(
+          Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+          Resize(min_size=(800,), max_size=1333, mode='bilinear')
+      )
+      (backbone): BackboneWithFPN(
+        (body): IntermediateLayerGetter(
+          (conv1): Conv2d(3, 64, kernel_size=(7, 7), stride=(2, 2), padding=(3, 3), bias=False)
+          (bn1): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+          (relu): ReLU(inplace=True)
+          (maxpool): MaxPool2d(kernel_size=3, stride=2, padding=1, dilation=1, ceil_mode=False)
+          (layer1): Sequential(
+            (0): Bottleneck(
+              (conv1): Conv2d(64, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+              (downsample): Sequential(
+                (0): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+                (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+            )
+            (1): Bottleneck(
+              (conv1): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+            (2): Bottleneck(
+              (conv1): Conv2d(256, 64, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(64, 64, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(64, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(64, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+          )
+          (layer2): Sequential(
+            (0): Bottleneck(
+              (conv1): Conv2d(256, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+              (downsample): Sequential(
+                (0): Conv2d(256, 512, kernel_size=(1, 1), stride=(2, 2), bias=False)
+                (1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+            )
+            (1): Bottleneck(
+              (conv1): Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+            (2): Bottleneck(
+              (conv1): Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+            (3): Bottleneck(
+              (conv1): Conv2d(512, 128, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(128, 128, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(128, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(128, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+          )
+          (layer3): Sequential(
+            (0): Bottleneck(
+              (conv1): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+              (downsample): Sequential(
+                (0): Conv2d(512, 1024, kernel_size=(1, 1), stride=(2, 2), bias=False)
+                (1): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+            )
+            (1): Bottleneck(
+              (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+            (2): Bottleneck(
+              (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+            (3): Bottleneck(
+              (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+            (4): Bottleneck(
+              (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+            (5): Bottleneck(
+              (conv1): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(256, 1024, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(1024, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+          )
+          (layer4): Sequential(
+            (0): Bottleneck(
+              (conv1): Conv2d(1024, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(2, 2), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+              (downsample): Sequential(
+                (0): Conv2d(1024, 2048, kernel_size=(1, 1), stride=(2, 2), bias=False)
+                (1): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              )
+            )
+            (1): Bottleneck(
+              (conv1): Conv2d(2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+            (2): Bottleneck(
+              (conv1): Conv2d(2048, 512, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn1): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv2): Conv2d(512, 512, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (bn2): BatchNorm2d(512, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (conv3): Conv2d(512, 2048, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (bn3): BatchNorm2d(2048, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+              (relu): ReLU(inplace=True)
+            )
+          )
+        )
+        (fpn): FeaturePyramidNetwork(
+          (inner_blocks): ModuleList(
+            (0): Conv2dNormActivation(
+              (0): Conv2d(256, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            )
+            (1): Conv2dNormActivation(
+              (0): Conv2d(512, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            )
+            (2): Conv2dNormActivation(
+              (0): Conv2d(1024, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            )
+            (3): Conv2dNormActivation(
+              (0): Conv2d(2048, 256, kernel_size=(1, 1), stride=(1, 1), bias=False)
+              (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            )
+          )
+          (layer_blocks): ModuleList(
+            (0-3): 4 x Conv2dNormActivation(
+              (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+              (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            )
+          )
+          (extra_blocks): LastLevelMaxPool()
+        )
+      )
+      (rpn): RegionProposalNetwork(
+        (anchor_generator): AnchorGenerator()
+        (head): RPNHead(
+          (conv): Sequential(
+            (0): Conv2dNormActivation(
+              (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+              (1): ReLU(inplace=True)
+            )
+            (1): Conv2dNormActivation(
+              (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1))
+              (1): ReLU(inplace=True)
+            )
+          )
+          (cls_logits): Conv2d(256, 3, kernel_size=(1, 1), stride=(1, 1))
+          (bbox_pred): Conv2d(256, 12, kernel_size=(1, 1), stride=(1, 1))
+        )
+      )
+      (roi_heads): RoIHeads(
+        (box_roi_pool): MultiScaleRoIAlign(featmap_names=['0', '1', '2', '3'], output_size=(7, 7), sampling_ratio=2)
+        (box_head): FastRCNNConvFCHead(
+          (0): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            (2): ReLU(inplace=True)
+          )
+          (1): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            (2): ReLU(inplace=True)
+          )
+          (2): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            (2): ReLU(inplace=True)
+          )
+          (3): Conv2dNormActivation(
+            (0): Conv2d(256, 256, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False)
+            (1): BatchNorm2d(256, eps=1e-05, momentum=0.1, affine=True, track_running_stats=True)
+            (2): ReLU(inplace=True)
+          )
+          (4): Flatten(start_dim=1, end_dim=-1)
+          (5): Linear(in_features=12544, out_features=1024, bias=True)
+          (6): ReLU(inplace=True)
+        )
+        (box_predictor): FastRCNNPredictor(
+          (cls_score): Linear(in_features=1024, out_features=2, bias=True)
+          (bbox_pred): Linear(in_features=1024, out_features=8, bias=True)
+        )
+      )
+    )
+
+**Breakdown:**  
+- Uses ‘Compute Unified Device Architecture’
+([CUDA](https://blogs.nvidia.com/blog/what-is-cuda-2/)) if available,
+falls back to CPU.  
+- Initializes ResNet50 Faster R-CNN with pretrained weights.  
+- ‘preprocess’ stores the input data transforms that take place just
+before the forward pass through the network. In this case, preprocess
+converts Tensor image, PIL image, or NumPy ndarray types into
+FloatTensor and scales pixel intensities in range \[0.,1.\]  
+
+#### Instantiating Plate_Image_Dataset class and creating training and validation subsets…
+
+``` python
+dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
+        img_dir=str(img_dir), 
+        annotations_file=str(annotations_file),
+        transforms=preprocess, 
+        )
+
+# split the dataset in train and test set
+dataset_size = 20  #normally would be len(dataset), but for debugging purposes this is sufficient
+validation_size = 5   # Again, this would normally be higher, for example: min(50, int(dataset_size // 5))  {20% of data for testing, or 50 samples, whichever is smaller}
+indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
+
+dataset_validation = torch.utils.data.Subset(dataset, indices[-validation_size:])
+dataset_train = torch.utils.data.Subset(dataset, indices[:])
+```
+
+**Breakdown:**  
+- Plate_Image_Dataset is a custom dataset class used to handle parsing
+the csv file for bounding box vertices, associating them with the
+correct image using a dictionary, and handling retrieval of this
+information.  
+- In order to create validation and training subsets of the positive
+samples (i.e., the images *with* at least one plate labelled), I created
+a randomly arranged list of indices (where len(indices) == the number of
+samples in the dataset). The validation subset size is equal to 20% of
+the superset, or 50 samples, whichever is smallest. When I implement
+dataset augmentation I will scale this up.  
+
+#### Instantiating Pytorch DataLoaders for train and validation subsets…
+
+``` python
+data_loader = torch.utils.data.DataLoader(
+    dataset_train,
+    batch_size=1,
+    shuffle=True,
+    collate_fn=utils.collate_fn
+)
+
+data_loader_test = torch.utils.data.DataLoader(
+    dataset_validation,
+    batch_size=1,
+    shuffle=False,
+    collate_fn=utils.collate_fn
+)
+```
+
+**Breakdown:**  
+- See [here](https://pytorch.org/docs/stable/data.html) Pytorch’s
+documentation for DataLoader. DataLoader fetches and collates together
+individual samples into batches - i.e., it acts as a sampler. It does so
+by squeezing on a batch dimension (typically the first) to Tensors. It
+also provides an iterable over the given dataset.  
+- In this case, the Image_Plate_Dataset class is a map-style dataset, as
+it implements **getitem**() and **len**(), and stores samples with their
+associated labels and metadata at a shared index.  
+- If shuffle == True, data is reshuffled at every epoch.  
+
+#### Calling train and evaluate_model…
+
+``` python
+save_dir = 'results'
+num_epochs = 1
+precedent_epoch = 0
+
+epoch, loss_metrics = train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
+
+eval_metrics = evaluate_model(model, data_loader_test,device)
+
+print("\n -end-")
+```
+
+    /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+      with torch.cuda.amp.autocast(enabled=scaler is not None):
+
+    Epoch: [0]  [ 0/20]  eta: 0:01:19  lr: 0.000268  loss: 12.7945 (12.7945)  loss_classifier: 0.7783 (0.7783)  loss_box_reg: 0.0010 (0.0010)  loss_objectness: 0.5034 (0.5034)  loss_rpn_box_reg: 11.5117 (11.5117)  time: 3.9912  data: 0.0122
+    Epoch: [0]  [10/20]  eta: 0:00:34  lr: 0.002897  loss: 11.4986 (11.6824)  loss_classifier: 0.3084 (0.3733)  loss_box_reg: 0.0008 (0.0008)  loss_objectness: 0.0673 (0.1701)  loss_rpn_box_reg: 11.1798 (11.1383)  time: 3.4898  data: 0.0119
+    Epoch: [0]  [19/20]  eta: 0:00:03  lr: 0.005000  loss: 10.7264 (9.3270)  loss_classifier: 0.0265 (0.2148)  loss_box_reg: 0.0008 (0.0010)  loss_objectness: 0.0595 (0.1178)  loss_rpn_box_reg: 10.6532 (8.9934)  time: 3.3762  data: 0.0114
+    Epoch: [0] Total time: 0:01:07 (3.3763 s / it)
+    Checkpoint saved: results/checkpoint_epoch_0.pth
+    creating index...
+    index created!
+    Test:  [0/5]  eta: 0:00:10  model_time: 2.0647 (2.0647)  evaluator_time: 0.0004 (0.0004)  time: 2.0742  data: 0.0090
+    Test:  [4/5]  eta: 0:00:02  model_time: 2.3267 (2.2443)  evaluator_time: 0.0005 (0.0004)  time: 2.2546  data: 0.0097
+    Test: Total time: 0:00:11 (2.2547 s / it)
+    Averaged stats: model_time: 2.3267 (2.2443)  evaluator_time: 0.0005 (0.0004)
+    Accumulating evaluation results...
+    DONE (t=0.00s).
+    IoU metric: bbox
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+     Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.000
+     Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.000
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = -1.000
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = -1.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+
+     -end-
+
+**Breakdown:**  
+- Brief overview:  
+1. Training function handles:  
+- Optimisation using [SGD with
+momentum](https://towardsdatascience.com/stochastic-gradient-descent-with-momentum-a84097641a5d)  
+- Learning rate scheduling  
+- Checkpoint saving  
+- Loss tracking  
+2. Evaluation produces:  
+- Mean Average Precision (mAP)  
+- Mean Average Recall (mAR)  
+- Performance metrics across IoU thresholds  
+- *Note* I have only set it to train for 1 epoch here just to show the
+output. I will train for longer on the cluster. Here, my focus is
+debugging the helper functions, not training the model.  
+
+### Loading a model and implementing ‘plot_training_loss’:
+
+Training seemed to complete ‘successfully’ (without any overt error
+message), as shown by the standard output: \#\| code-fold: true —–
+stdout —– Epoch: \[0\] \[ 0/445\] eta: 3:16:15 lr: 0.000016 loss:
+12.4731 (12.4731)  
+loss_classifier: 0.6946 (0.6946) loss_box_reg: 0.0014 (0.0014)  
+loss_objectness: 0.5575 (0.5575) loss_rpn_box_reg: 11.2197 (11.2197)  
+time: 26.4628 data: 0.0658 —– stdout —– Epoch: \[0\] \[ 10/445\] eta:
+3:04:58 lr: 0.000129 loss: 12.2818 (12.2796)  
+loss_classifier: 0.6680 (0.6509) loss_box_reg: 0.0014 (0.0016)  
+loss_objectness: 0.5165 (0.4319) loss_rpn_box_reg: 11.2103 (11.1952)  
+time: 25.5133 data: 0.0331 —– stdout —– Epoch: \[0\] \[ 20/445\] eta:
+2:56:12 lr: 0.000241 loss: 11.9741 (11.9625)  
+loss_classifier: 0.5031 (0.4939) loss_box_reg: 0.0010 (0.0014)  
+loss_objectness: 0.1025 (0.2652) loss_rpn_box_reg: 11.2047 (11.2020)  
+time: 24.7964 data: 0.0347 —– stdout —– Epoch: \[0\] \[ 30/445\] eta:
+2:49:23 lr: 0.000354 loss: 11.3177 (11.6900)  
+loss_classifier: 0.1428 (0.3636) loss_box_reg: 0.0008 (0.0014)  
+loss_objectness: 0.0437 (0.1921) loss_rpn_box_reg: 11.0751 (11.1330)  
+time: 23.9285 data: 0.0389 —– stdout —– Epoch: \[0\] \[ 40/445\] eta:
+2:46:09 lr: 0.000466 loss: 10.9000 (11.4590)  
+loss_classifier: 0.0464 (0.2834) loss_box_reg: 0.0008 (0.0013)  
+loss_objectness: 0.0347 (0.1553) loss_rpn_box_reg: 10.7784 (11.0190)  
+time: 24.3416 data: 0.0362 —– stdout —– Epoch: \[0\] \[ 50/445\] eta:
+2:42:53 lr: 0.000579 loss: 10.1130 (10.8375)  
+loss_classifier: 0.0280 (0.2326) loss_box_reg: 0.0012 (0.0014)  
+loss_objectness: 0.0291 (0.1330) loss_rpn_box_reg: 10.0758 (10.4705)  
+time: 25.1325 data: 0.0359 —– stdout —– Epoch: \[0\] \[ 60/445\] eta:
+2:37:46 lr: 0.000691 loss: 5.4877 (9.7458)  
+loss_classifier: 0.0184 (0.1970) loss_box_reg: 0.0017 (0.0015)  
+loss_objectness: 0.0268 (0.1215) loss_rpn_box_reg: 5.4460 (9.4258) time:
+24.5357 data: 0.0356 —– stdout —– Epoch: \[0\] \[ 70/445\] eta: 2:33:04
+lr: 0.000804 loss: 2.9799 (8.7480)  
+loss_classifier: 0.0132 (0.1709) loss_box_reg: 0.0012 (0.0014)  
+loss_objectness: 0.0268 (0.1124) loss_rpn_box_reg: 2.9488 (8.4633) time:
+23.8520 data: 0.0346 —– stdout —– Epoch: \[0\] \[ 80/445\] eta: 2:28:37
+lr: 0.000916 loss: 1.8505 (7.8749)  
+loss_classifier: 0.0090 (0.1509) loss_box_reg: 0.0005 (0.0013)  
+loss_objectness: 0.0169 (0.1005) loss_rpn_box_reg: 1.8392 (7.6221) time:
+23.9480 data: 0.0344 —– stdout —– Epoch: \[0\] \[ 90/445\] eta: 2:24:38
+lr: 0.001029 loss: 1.8975 (7.3354)  
+loss_classifier: 0.0071 (0.1350) loss_box_reg: 0.0003 (0.0012)  
+loss_objectness: 0.0081 (0.0901) loss_rpn_box_reg: 1.8844 (7.1090) time:
+24.2811 data: 0.0355 —– stdout —– Epoch: \[0\] \[100/445\] eta: 2:20:27
+lr: 0.001141 loss: 2.8099 (6.9393)  
+loss_classifier: 0.0071 (0.1224) loss_box_reg: 0.0002 (0.0011)  
+loss_objectness: 0.0056 (0.0844) loss_rpn_box_reg: 2.7990 (6.7314) time:
+24.4172 data: 0.0355 —– stdout —– Epoch: \[0\] \[110/445\] eta: 2:16:03
+lr: 0.001254 loss: 2.2265 (6.4966)  
+loss_classifier: 0.0054 (0.1118) loss_box_reg: 0.0003 (0.0011)  
+loss_objectness: 0.0048 (0.0777) loss_rpn_box_reg: 2.2155 (6.3060) time:
+24.0187 data: 0.0361 —– stdout —– Epoch: \[0\] \[120/445\] eta: 2:11:50
+lr: 0.001366 loss: 1.9435 (6.1239)  
+loss_classifier: 0.0048 (0.1030) loss_box_reg: 0.0003 (0.0010)  
+loss_objectness: 0.0019 (0.0715) loss_rpn_box_reg: 1.9376 (5.9484) time:
+23.8897 data: 0.0357 —– stdout —– Epoch: \[0\] \[130/445\] eta: 2:07:35
+lr: 0.001479 loss: 1.7308 (5.7787)  
+loss_classifier: 0.0043 (0.0954) loss_box_reg: 0.0003 (0.0010)  
+loss_objectness: 0.0030 (0.0666) loss_rpn_box_reg: 1.7195 (5.6157) time:
+23.9366 data: 0.0331 —– stdout —– Epoch: \[0\] \[140/445\] eta: 2:03:15
+lr: 0.001591 loss: 1.5541 (5.4746)  
+loss_classifier: 0.0028 (0.0889) loss_box_reg: 0.0002 (0.0009)  
+loss_objectness: 0.0042 (0.0630) loss_rpn_box_reg: 1.5190 (5.3218) time:
+23.7006 data: 0.0338 —– stdout —– Epoch: \[0\] \[150/445\] eta: 1:59:03
+lr: 0.001704 loss: 1.2306 (5.1811)  
+loss_classifier: 0.0024 (0.0831) loss_box_reg: 0.0002 (0.0009)  
+loss_objectness: 0.0038 (0.0591) loss_rpn_box_reg: 1.2248 (5.0381) time:
+23.6403 data: 0.0338 —– stdout —– Epoch: \[0\] \[160/445\] eta: 1:54:58
+lr: 0.001816 loss: 1.0814 (4.9265)  
+loss_classifier: 0.0018 (0.0781) loss_box_reg: 0.0002 (0.0008)  
+loss_objectness: 0.0020 (0.0557) loss_rpn_box_reg: 1.0769 (4.7919) time:
+23.8936 data: 0.0340 —– stdout —– Epoch: \[0\] \[170/445\] eta: 1:50:45
+lr: 0.001929 loss: 1.1236 (4.7317)  
+loss_classifier: 0.0015 (0.0736) loss_box_reg: 0.0001 (0.0008)  
+loss_objectness: 0.0017 (0.0525) loss_rpn_box_reg: 1.1205 (4.6048) time:
+23.8013 data: 0.0313 —– stdout —– Epoch: \[0\] \[180/445\] eta: 1:46:35
+lr: 0.002041 loss: 1.3348 (4.5468)  
+loss_classifier: 0.0013 (0.0696) loss_box_reg: 0.0002 (0.0008)  
+loss_objectness: 0.0007 (0.0497) loss_rpn_box_reg: 1.3297 (4.4268) time:
+23.5565 data: 0.0266 —– stdout —– Epoch: \[0\] \[190/445\] eta: 1:42:29
+lr: 0.002154 loss: 1.0461 (4.3523)  
+loss_classifier: 0.0011 (0.0660) loss_box_reg: 0.0003 (0.0008)  
+loss_objectness: 0.0008 (0.0474) loss_rpn_box_reg: 1.0428 (4.2382) time:
+23.6894 data: 0.0281 —– stdout —– Epoch: \[0\] \[200/445\] eta: 1:38:22
+lr: 0.002266 loss: 0.8895 (4.1987)  
+loss_classifier: 0.0010 (0.0628) loss_box_reg: 0.0004 (0.0007)  
+loss_objectness: 0.0012 (0.0451) loss_rpn_box_reg: 0.8852 (4.0901) time:
+23.7231 data: 0.0375 —– stdout —– Epoch: \[0\] \[210/445\] eta: 1:34:14
+lr: 0.002379 loss: 0.9960 (4.0410)  
+loss_classifier: 0.0011 (0.0599) loss_box_reg: 0.0003 (0.0007)  
+loss_objectness: 0.0005 (0.0430) loss_rpn_box_reg: 0.9941 (3.9374) time:
+23.5388 data: 0.0365 —– stdout —– Epoch: \[0\] \[220/445\] eta: 1:30:10
+lr: 0.002491 loss: 0.8399 (3.9289)  
+loss_classifier: 0.0011 (0.0572) loss_box_reg: 0.0004 (0.0007)  
+loss_objectness: 0.0009 (0.0412) loss_rpn_box_reg: 0.8378 (3.8298) time:
+23.5903 data: 0.0301 —– stdout —– Epoch: \[0\] \[230/445\] eta: 1:54:43
+lr: 0.002604 loss: 1.2622 (3.8144)  
+loss_classifier: 0.0009 (0.0548) loss_box_reg: 0.0003 (0.0007)  
+loss_objectness: 0.0009 (0.0395) loss_rpn_box_reg: 1.2600 (3.7194) time:
+115.9584 data: 0.0419 —– stdout —– Epoch: \[0\] \[240/445\] eta: 2:06:24
+lr: 0.002716 loss: 1.2218 (3.7280)  
+loss_classifier: 0.0007 (0.0525) loss_box_reg: 0.0001 (0.0007)  
+loss_objectness: 0.0009 (0.0380) loss_rpn_box_reg: 1.2207 (3.6368) time:
+180.1180 data: 0.0575 —– stdout —– Epoch: \[0\] \[250/445\] eta: 2:16:37
+lr: 0.002829 loss: 1.8142 (3.6736)  
+loss_classifier: 0.0007 (0.0505) loss_box_reg: 0.0001 (0.0007)  
+loss_objectness: 0.0007 (0.0365) loss_rpn_box_reg: 1.8125 (3.5859) time:
+157.8001 data: 0.0509 —– stdout —– Epoch: \[0\] \[260/445\] eta: 2:07:27
+lr: 0.002941 loss: 1.6318 (3.5919)  
+loss_classifier: 0.0006 (0.0486) loss_box_reg: 0.0001 (0.0006)  
+loss_objectness: 0.0005 (0.0351) loss_rpn_box_reg: 1.6298 (3.5075) time:
+93.6587 data: 0.0339 —– stdout —– Epoch: \[0\] \[270/445\] eta: 1:58:35
+lr: 0.003054 loss: 1.3040 (3.5010)  
+loss_classifier: 0.0005 (0.0468) loss_box_reg: 0.0001 (0.0006)  
+loss_objectness: 0.0003 (0.0339) loss_rpn_box_reg: 1.3028 (3.4198) time:
+23.2967 data: 0.0278 —– stdout —– Epoch: \[0\] \[280/445\] eta: 1:49:59
+lr: 0.003166 loss: 1.6197 (3.4629)  
+loss_classifier: 0.0005 (0.0451) loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0011 (0.0330) loss_rpn_box_reg: 1.6135 (3.3841) time:
+22.5025 data: 0.0291 —– stdout —– Epoch: \[0\] \[290/445\] eta: 1:41:48
+lr: 0.003279 loss: 1.9159 (3.4018)  
+loss_classifier: 0.0005 (0.0436) loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0011 (0.0319) loss_rpn_box_reg: 1.9139 (3.3257) time:
+22.4999 data: 0.0285 —– stdout —– Epoch: \[0\] \[300/445\] eta: 1:33:54
+lr: 0.003391 loss: 1.6265 (3.3566)  
+loss_classifier: 0.0004 (0.0422) loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0003 (0.0309) loss_rpn_box_reg: 1.6257 (3.2830) time:
+22.7762 data: 0.0256 —– stdout —– Epoch: \[0\] \[310/445\] eta: 1:26:02
+lr: 0.003504 loss: 1.3157 (3.2814)  
+loss_classifier: 0.0004 (0.0408) loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0003 (0.0300) loss_rpn_box_reg: 1.3151 (3.2099) time:
+21.2467 data: 0.0233 —– stdout —– Epoch: \[0\] \[320/445\] eta: 1:18:02
+lr: 0.003616 loss: 1.5974 (3.2630)  
+loss_classifier: 0.0004 (0.0396) loss_box_reg: 0.0003 (0.0006)  
+loss_objectness: 0.0015 (0.0292) loss_rpn_box_reg: 1.5681 (3.1937) time:
+16.4571 data: 0.0221 —– stdout —– Epoch: \[0\] \[330/445\] eta: 1:10:23
+lr: 0.003729 loss: 2.0970 (3.2195)  
+loss_classifier: 0.0004 (0.0384) loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0004 (0.0283) loss_rpn_box_reg: 2.0959 (3.1522) time:
+13.1626 data: 0.0214 —– stdout —– Epoch: \[0\] \[340/445\] eta: 1:03:03
+lr: 0.003841 loss: 1.4664 (3.1841)  
+loss_classifier: 0.0003 (0.0373) loss_box_reg: 0.0003 (0.0006)  
+loss_objectness: 0.0003 (0.0275) loss_rpn_box_reg: 1.4655 (3.1187) time:
+13.1292 data: 0.0205 —– stdout —– Epoch: \[0\] \[350/445\] eta: 0:56:01
+lr: 0.003954 loss: 1.4350 (3.1474)  
+loss_classifier: 0.0005 (0.0363) loss_box_reg: 0.0004 (0.0006)  
+loss_objectness: 0.0005 (0.0270) loss_rpn_box_reg: 1.4344 (3.0836) time:
+13.1202 data: 0.0215 —– stdout —– Epoch: \[0\] \[360/445\] eta: 0:49:15
+lr: 0.004066 loss: 2.5771 (3.1577)  
+loss_classifier: 0.0004 (0.0353) loss_box_reg: 0.0007 (0.0006)  
+loss_objectness: 0.0005 (0.0263) loss_rpn_box_reg: 2.5583 (3.0956) time:
+13.1855 data: 0.0222 —– stdout —– Epoch: \[0\] \[370/445\] eta: 0:42:44
+lr: 0.004179 loss: 3.8424 (3.1623)  
+loss_classifier: 0.0002 (0.0343) loss_box_reg: 0.0009 (0.0006)  
+loss_objectness: 0.0005 (0.0256) loss_rpn_box_reg: 3.8294 (3.1018) time:
+13.3834 data: 0.0228 —– stdout —– Epoch: \[0\] \[380/445\] eta: 0:36:26
+lr: 0.004291 loss: 1.6415 (3.1093)  
+loss_classifier: 0.0002 (0.0334) loss_box_reg: 0.0008 (0.0006)  
+loss_objectness: 0.0007 (0.0251) loss_rpn_box_reg: 1.6396 (3.0502) time:
+13.2702 data: 0.0247 —– stdout —– Epoch: \[0\] \[390/445\] eta: 0:30:21
+lr: 0.004404 loss: 1.1593 (3.1042)  
+loss_classifier: 0.0002 (0.0326) loss_box_reg: 0.0003 (0.0006)  
+loss_objectness: 0.0006 (0.0244) loss_rpn_box_reg: 1.1582 (3.0466) time:
+13.0649 data: 0.0264 —– stdout —– Epoch: \[0\] \[400/445\] eta: 0:24:27
+lr: 0.004516 loss: 3.4072 (3.1247)  
+loss_classifier: 0.0002 (0.0318) loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0006 (0.0239) loss_rpn_box_reg: 3.3835 (3.0684) time:
+13.0817 data: 0.0261 —– stdout —– Epoch: \[0\] \[410/445\] eta: 0:18:44
+lr: 0.004629 loss: 3.0871 (3.0998)  
+loss_classifier: 0.0002 (0.0310) loss_box_reg: 0.0003 (0.0006)  
+loss_objectness: 0.0006 (0.0233) loss_rpn_box_reg: 3.0852 (3.0449) time:
+13.0341 data: 0.0262 —– stdout —– Epoch: \[0\] \[420/445\] eta: 0:13:12
+lr: 0.004741 loss: 2.1452 (3.0729)  
+loss_classifier: 0.0002 (0.0303) loss_box_reg: 0.0003 (0.0006)  
+loss_objectness: 0.0006 (0.0228) loss_rpn_box_reg: 2.1442 (3.0192) time:
+13.0322 data: 0.0264 —– stdout —– Epoch: \[0\] \[430/445\] eta: 0:07:48
+lr: 0.004854 loss: 1.3435 (3.0360)  
+loss_classifier: 0.0002 (0.0296) loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0007 (0.0223) loss_rpn_box_reg: 1.3427 (2.9836) time:
+13.1675 data: 0.0227 —– stdout —– Epoch: \[0\] \[440/445\] eta: 0:02:34
+lr: 0.004966 loss: 1.1867 (3.0013)  
+loss_classifier: 0.0002 (0.0289) loss_box_reg: 0.0002 (0.0006)  
+loss_objectness: 0.0007 (0.0219) loss_rpn_box_reg: 1.1862 (2.9499) time:
+13.3361 data: 0.0213 —– stdout —– Epoch: \[0\] \[444/445\] eta: 0:00:30
+lr: 0.005000 loss: 1.3435 (2.9855)  
+loss_classifier: 0.0002 (0.0287) loss_box_reg: 0.0001 (0.0005)  
+loss_objectness: 0.0006 (0.0217) loss_rpn_box_reg: 1.3427 (2.9346) time:
+13.3004 data: 0.0221 Epoch: \[0\] Total time: 3:47:38 (30.6933 s / it)
+
+    Next, I want to try and load the model from the .pth file saved in the previous code block. The'load_model()' function expects the save directory string of the .pth file, the number of classes (2: background, plate), and the model file name. It returns the model, optimizer, and epoch. I then pass the model to evaluate_model(). I will also type- and shape-check the eval_metrics list returned from evaluate_model for clarity when later creating a function to plot these metrics.\
+
+    ::: {.cell execution_count=24}
+    ``` {.python .cell-code}
+    model, optimizer, epoch = load_model('../checkpoints/', 2, 'checkpoint_epoch_0')
+
+    eval_metrics = evaluate_model(model, data_loader_test, device)
+
+    print(eval_metrics, '\n', shape(eval_metrics))
+
+    print("\n -end-")
+
+<div class="cell-output cell-output-error">
+
+    RuntimeError: Error(s) in loading state_dict for FasterRCNN:
+        Missing key(s) in state_dict: "backbone.body.conv1.weight", "backbone.body.bn1.weight", "backbone.body.bn1.bias", "backbone.body.bn1.running_mean", "backbone.body.bn1.running_var", "backbone.body.layer1.0.conv1.weight", "backbone.body.layer1.0.bn1.weight", "backbone.body.layer1.0.bn1.bias", "backbone.body.layer1.0.bn1.running_mean", "backbone.body.layer1.0.bn1.running_var", "backbone.body.layer1.0.conv2.weight", "backbone.body.layer1.0.bn2.weight", "backbone.body.layer1.0.bn2.bias", "backbone.body.layer1.0.bn2.running_mean", "backbone.body.layer1.0.bn2.running_var", "backbone.body.layer1.0.conv3.weight", "backbone.body.layer1.0.bn3.weight", "backbone.body.layer1.0.bn3.bias", "backbone.body.layer1.0.bn3.running_mean", "backbone.body.layer1.0.bn3.running_var", "backbone.body.layer1.0.downsample.0.weight", "backbone.body.layer1.0.downsample.1.weight", "backbone.body.layer1.0.downsample.1.bias", "backbone.body.layer1.0.downsample.1.running_mean", "backbone.body.layer1.0.downsample.1.running_var", "backbone.body.layer1.1.conv1.weight", "backbone.body.layer1.1.bn1.weight", "backbone.body.layer1.1.bn1.bias", "backbone.body.layer1.1.bn1.running_mean", "backbone.body.layer1.1.bn1.running_var", "backbone.body.layer1.1.conv2.weight", "backbone.body.layer1.1.bn2.weight", "backbone.body.layer1.1.bn2.bias", "backbone.body.layer1.1.bn2.running_mean", "backbone.body.layer1.1.bn2.running_var", "backbone.body.layer1.1.conv3.weight", "backbone.body.layer1.1.bn3.weight", "backbone.body.layer1.1.bn3.bias", "backbone.body.layer1.1.bn3.running_mean", "backbone.body.layer1.1.bn3.running_var", "backbone.body.layer1.2.conv1.weight", "backbone.body.layer1.2.bn1.weight", "backbone.body.layer1.2.bn1.bias", "backbone.body.layer1.2.bn1.running_mean", "backbone.body.layer1.2.bn1.running_var", "backbone.body.layer1.2.conv2.weight", "backbone.body.layer1.2.bn2.weight", "backbone.body.layer1.2.bn2.bias", "backbone.body.layer1.2.bn2.running_mean", "backbone.body.layer1.2.bn2.running_var", "backbone.body.layer1.2.conv3.weight", "backbone.body.layer1.2.bn3.weight", "backbone.body.layer1.2.bn3.bias", "backbone.body.layer1.2.bn3.running_mean", "backbone.body.layer1.2.bn3.running_var", "backbone.body.layer2.0.conv1.weight", "backbone.body.layer2.0.bn1.weight", "backbone.body.layer2.0.bn1.bias", "backbone.body.layer2.0.bn1.running_mean", "backbone.body.layer2.0.bn1.running_var", "backbone.body.layer2.0.conv2.weight", "backbone.body.layer2.0.bn2.weight", "backbone.body.layer2.0.bn2.bias", "backbone.body.layer2.0.bn2.running_mean", "backbone.body.layer2.0.bn2.running_var", "backbone.body.layer2.0.conv3.weight", "backbone.body.layer2.0.bn3.weight", "backbone.body.layer2.0.bn3.bias", "backbone.body.layer2.0.bn3.running_mean", "backbone.body.layer2.0.bn3.running_var", "backbone.body.layer2.0.downsample.0.weight", "backbone.body.layer2.0.downsample.1.weight", "backbone.body.layer2.0.downsample.1.bias", "backbone.body.layer2.0.downsample.1.running_mean", "backbone.body.layer2.0.downsample.1.running_var", "backbone.body.layer2.1.conv1.weight", "backbone.body.layer2.1.bn1.weight", "backbone.body.layer2.1.bn1.bias", "backbone.body.layer2.1.bn1.running_mean", "backbone.body.layer2.1.bn1.running_var", "backbone.body.layer2.1.conv2.weight", "backbone.body.layer2.1.bn2.weight", "backbone.body.layer2.1.bn2.bias", "backbone.body.layer2.1.bn2.running_mean", "backbone.body.layer2.1.bn2.running_var", "backbone.body.layer2.1.conv3.weight", "backbone.body.layer2.1.bn3.weight", "backbone.body.layer2.1.bn3.bias", "backbone.body.layer2.1.bn3.running_mean", "backbone.body.layer2.1.bn3.running_var", "backbone.body.layer2.2.conv1.weight", "backbone.body.layer2.2.bn1.weight", "backbone.body.layer2.2.bn1.bias", "backbone.body.layer2.2.bn1.running_mean", "backbone.body.layer2.2.bn1.running_var", "backbone.body.layer2.2.conv2.weight", "backbone.body.layer2.2.bn2.weight", "backbone.body.layer2.2.bn2.bias", "backbone.body.layer2.2.bn2.running_mean", "backbone.body.layer2.2.bn2.running_var", "backbone.body.layer2.2.conv3.weight", "backbone.body.layer2.2.bn3.weight", "backbone.body.layer2.2.bn3.bias", "backbone.body.layer2.2.bn3.running_mean", "backbone.body.layer2.2.bn3.running_var", "backbone.body.layer2.3.conv1.weight", "backbone.body.layer2.3.bn1.weight", "backbone.body.layer2.3.bn1.bias", "backbone.body.layer2.3.bn1.running_mean", "backbone.body.layer2.3.bn1.running_var", "backbone.body.layer2.3.conv2.weight", "backbone.body.layer2.3.bn2.weight", "backbone.body.layer2.3.bn2.bias", "backbone.body.layer2.3.bn2.running_mean", "backbone.body.layer2.3.bn2.running_var", "backbone.body.layer2.3.conv3.weight", "backbone.body.layer2.3.bn3.weight", "backbone.body.layer2.3.bn3.bias", "backbone.body.layer2.3.bn3.running_mean", "backbone.body.layer2.3.bn3.running_var", "backbone.body.layer3.0.conv1.weight", "backbone.body.layer3.0.bn1.weight", "backbone.body.layer3.0.bn1.bias", "backbone.body.layer3.0.bn1.running_mean", "backbone.body.layer3.0.bn1.running_var", "backbone.body.layer3.0.conv2.weight", "backbone.body.layer3.0.bn2.weight", "backbone.body.layer3.0.bn2.bias", "backbone.body.layer3.0.bn2.running_mean", "backbone.body.layer3.0.bn2.running_var", "backbone.body.layer3.0.conv3.weight", "backbone.body.layer3.0.bn3.weight", "backbone.body.layer3.0.bn3.bias", "backbone.body.layer3.0.bn3.running_mean", "backbone.body.layer3.0.bn3.running_var", "backbone.body.layer3.0.downsample.0.weight", "backbone.body.layer3.0.downsample.1.weight", "backbone.body.layer3.0.downsample.1.bias", "backbone.body.layer3.0.downsample.1.running_mean", "backbone.body.layer3.0.downsample.1.running_var", "backbone.body.layer3.1.conv1.weight", "backbone.body.layer3.1.bn1.weight", "backbone.body.layer3.1.bn1.bias", "backbone.body.layer3.1.bn1.running_mean", "backbone.body.layer3.1.bn1.running_var", "backbone.body.layer3.1.conv2.weight", "backbone.body.layer3.1.bn2.weight", "backbone.body.layer3.1.bn2.bias", "backbone.body.layer3.1.bn2.running_mean", "backbone.body.layer3.1.bn2.running_var", "backbone.body.layer3.1.conv3.weight", "backbone.body.layer3.1.bn3.weight", "backbone.body.layer3.1.bn3.bias", "backbone.body.layer3.1.bn3.running_mean", "backbone.body.layer3.1.bn3.running_var", "backbone.body.layer3.2.conv1.weight", "backbone.body.layer3.2.bn1.weight", "backbone.body.layer3.2.bn1.bias", "backbone.body.layer3.2.bn1.running_mean", "backbone.body.layer3.2.bn1.running_var", "backbone.body.layer3.2.conv2.weight", "backbone.body.layer3.2.bn2.weight", "backbone.body.layer3.2.bn2.bias", "backbone.body.layer3.2.bn2.running_mean", "backbone.body.layer3.2.bn2.running_var", "backbone.body.layer3.2.conv3.weight", "backbone.body.layer3.2.bn3.weight", "backbone.body.layer3.2.bn3.bias", "backbone.body.layer3.2.bn3.running_mean", "backbone.body.layer3.2.bn3.running_var", "backbone.body.layer3.3.conv1.weight", "backbone.body.layer3.3.bn1.weight", "backbone.body.layer3.3.bn1.bias", "backbone.body.layer3.3.bn1.running_mean", "backbone.body.layer3.3.bn1.running_var", "backbone.body.layer3.3.conv2.weight", "backbone.body.layer3.3.bn2.weight", "backbone.body.layer3.3.bn2.bias", "backbone.body.layer3.3.bn2.running_mean", "backbone.body.layer3.3.bn2.running_var", "backbone.body.layer3.3.conv3.weight", "backbone.body.layer3.3.bn3.weight", "backbone.body.layer3.3.bn3.bias", "backbone.body.layer3.3.bn3.running_mean", "backbone.body.layer3.3.bn3.running_var", "backbone.body.layer3.4.conv1.weight", "backbone.body.layer3.4.bn1.weight", "backbone.body.layer3.4.bn1.bias", "backbone.body.layer3.4.bn1.running_mean", "backbone.body.layer3.4.bn1.running_var", "backbone.body.layer3.4.conv2.weight", "backbone.body.layer3.4.bn2.weight", "backbone.body.layer3.4.bn2.bias", "backbone.body.layer3.4.bn2.running_mean", "backbone.body.layer3.4.bn2.running_var", "backbone.body.layer3.4.conv3.weight", "backbone.body.layer3.4.bn3.weight", "backbone.body.layer3.4.bn3.bias", "backbone.body.layer3.4.bn3.running_mean", "backbone.body.layer3.4.bn3.running_var", "backbone.body.layer3.5.conv1.weight", "backbone.body.layer3.5.bn1.weight", "backbone.body.layer3.5.bn1.bias", "backbone.body.layer3.5.bn1.running_mean", "backbone.body.layer3.5.bn1.running_var", "backbone.body.layer3.5.conv2.weight", "backbone.body.layer3.5.bn2.weight", "backbone.body.layer3.5.bn2.bias", "backbone.body.layer3.5.bn2.running_mean", "backbone.body.layer3.5.bn2.running_var", "backbone.body.layer3.5.conv3.weight", "backbone.body.layer3.5.bn3.weight", "backbone.body.layer3.5.bn3.bias", "backbone.body.layer3.5.bn3.running_mean", "backbone.body.layer3.5.bn3.running_var", "backbone.body.layer4.0.conv1.weight", "backbone.body.layer4.0.bn1.weight", "backbone.body.layer4.0.bn1.bias", "backbone.body.layer4.0.bn1.running_mean", "backbone.body.layer4.0.bn1.running_var", "backbone.body.layer4.0.conv2.weight", "backbone.body.layer4.0.bn2.weight", "backbone.body.layer4.0.bn2.bias", "backbone.body.layer4.0.bn2.running_mean", "backbone.body.layer4.0.bn2.running_var", "backbone.body.layer4.0.conv3.weight", "backbone.body.layer4.0.bn3.weight", "backbone.body.layer4.0.bn3.bias", "backbone.body.layer4.0.bn3.running_mean", "backbone.body.layer4.0.bn3.running_var", "backbone.body.layer4.0.downsample.0.weight", "backbone.body.layer4.0.downsample.1.weight", "backbone.body.layer4.0.downsample.1.bias", "backbone.body.layer4.0.downsample.1.running_mean", "backbone.body.layer4.0.downsample.1.running_var", "backbone.body.layer4.1.conv1.weight", "backbone.body.layer4.1.bn1.weight", "backbone.body.layer4.1.bn1.bias", "backbone.body.layer4.1.bn1.running_mean", "backbone.body.layer4.1.bn1.running_var", "backbone.body.layer4.1.conv2.weight", "backbone.body.layer4.1.bn2.weight", "backbone.body.layer4.1.bn2.bias", "backbone.body.layer4.1.bn2.running_mean", "backbone.body.layer4.1.bn2.running_var", "backbone.body.layer4.1.conv3.weight", "backbone.body.layer4.1.bn3.weight", "backbone.body.layer4.1.bn3.bias", "backbone.body.layer4.1.bn3.running_mean", "backbone.body.layer4.1.bn3.running_var", "backbone.body.layer4.2.conv1.weight", "backbone.body.layer4.2.bn1.weight", "backbone.body.layer4.2.bn1.bias", "backbone.body.layer4.2.bn1.running_mean", "backbone.body.layer4.2.bn1.running_var", "backbone.body.layer4.2.conv2.weight", "backbone.body.layer4.2.bn2.weight", "backbone.body.layer4.2.bn2.bias", "backbone.body.layer4.2.bn2.running_mean", "backbone.body.layer4.2.bn2.running_var", "backbone.body.layer4.2.conv3.weight", "backbone.body.layer4.2.bn3.weight", "backbone.body.layer4.2.bn3.bias", "backbone.body.layer4.2.bn3.running_mean", "backbone.body.layer4.2.bn3.running_var", "backbone.fpn.inner_blocks.0.0.weight", "backbone.fpn.inner_blocks.0.1.weight", "backbone.fpn.inner_blocks.0.1.bias", "backbone.fpn.inner_blocks.0.1.running_mean", "backbone.fpn.inner_blocks.0.1.running_var", "backbone.fpn.inner_blocks.1.0.weight", "backbone.fpn.inner_blocks.1.1.weight", "backbone.fpn.inner_blocks.1.1.bias", "backbone.fpn.inner_blocks.1.1.running_mean", "backbone.fpn.inner_blocks.1.1.running_var", "backbone.fpn.inner_blocks.2.0.weight", "backbone.fpn.inner_blocks.2.1.weight", "backbone.fpn.inner_blocks.2.1.bias", "backbone.fpn.inner_blocks.2.1.running_mean", "backbone.fpn.inner_blocks.2.1.running_var", "backbone.fpn.inner_blocks.3.0.weight", "backbone.fpn.inner_blocks.3.1.weight", "backbone.fpn.inner_blocks.3.1.bias", "backbone.fpn.inner_blocks.3.1.running_mean", "backbone.fpn.inner_blocks.3.1.running_var", "backbone.fpn.layer_blocks.0.0.weight", "backbone.fpn.layer_blocks.0.1.weight", "backbone.fpn.layer_blocks.0.1.bias", "backbone.fpn.layer_blocks.0.1.running_mean", "backbone.fpn.layer_blocks.0.1.running_var", "backbone.fpn.layer_blocks.1.0.weight", "backbone.fpn.layer_blocks.1.1.weight", "backbone.fpn.layer_blocks.1.1.bias", "backbone.fpn.layer_blocks.1.1.running_mean", "backbone.fpn.layer_blocks.1.1.running_var", "backbone.fpn.layer_blocks.2.0.weight", "backbone.fpn.layer_blocks.2.1.weight", "backbone.fpn.layer_blocks.2.1.bias", "backbone.fpn.layer_blocks.2.1.running_mean", "backbone.fpn.layer_blocks.2.1.running_var", "backbone.fpn.layer_blocks.3.0.weight", "backbone.fpn.layer_blocks.3.1.weight", "backbone.fpn.layer_blocks.3.1.bias", "backbone.fpn.layer_blocks.3.1.running_mean", "backbone.fpn.layer_blocks.3.1.running_var", "rpn.head.conv.0.0.weight", "rpn.head.conv.0.0.bias", "rpn.head.conv.1.0.weight", "rpn.head.conv.1.0.bias", "rpn.head.cls_logits.weight", "rpn.head.cls_logits.bias", "rpn.head.bbox_pred.weight", "rpn.head.bbox_pred.bias", "roi_heads.box_head.0.0.weight", "roi_heads.box_head.0.1.weight", "roi_heads.box_head.0.1.bias", "roi_heads.box_head.0.1.running_mean", "roi_heads.box_head.0.1.running_var", "roi_heads.box_head.1.0.weight", "roi_heads.box_head.1.1.weight", "roi_heads.box_head.1.1.bias", "roi_heads.box_head.1.1.running_mean", "roi_heads.box_head.1.1.running_var", "roi_heads.box_head.2.0.weight", "roi_heads.box_head.2.1.weight", "roi_heads.box_head.2.1.bias", "roi_heads.box_head.2.1.running_mean", "roi_heads.box_head.2.1.running_var", "roi_heads.box_head.3.0.weight", "roi_heads.box_head.3.1.weight", "roi_heads.box_head.3.1.bias", "roi_heads.box_head.3.1.running_mean", "roi_heads.box_head.3.1.running_var", "roi_heads.box_head.5.weight", "roi_heads.box_head.5.bias", "roi_heads.box_predictor.cls_score.weight", "roi_heads.box_predictor.cls_score.bias", "roi_heads.box_predictor.bbox_pred.weight", "roi_heads.box_predictor.bbox_pred.bias". 
+        Unexpected key(s) in state_dict: "state", "param_groups". 
+    [0;31m---------------------------------------------------------------------------[0m
+    [0;31mRuntimeError[0m                              Traceback (most recent call last)
+    Cell [0;32mIn[23], line 1[0m
+    [0;32m----> 1[0m model, optimizer, epoch [38;5;241m=[39m [43mload_model[49m[43m([49m[38;5;124;43m'[39;49m[38;5;124;43m../checkpoints/[39;49m[38;5;124;43m'[39;49m[43m,[49m[43m [49m[38;5;241;43m2[39;49m[43m,[49m[43m [49m[38;5;124;43m'[39;49m[38;5;124;43mcheckpoint_epoch_0[39;49m[38;5;124;43m'[39;49m[43m)[49m
+    [1;32m      3[0m eval_metrics [38;5;241m=[39m evaluate_model(model, data_loader_test, device)
+    [1;32m      5[0m [38;5;28mprint[39m(eval_metrics, [38;5;124m'[39m[38;5;130;01m\n[39;00m[38;5;124m'[39m, shape(eval_metrics))
+
+    Cell [0;32mIn[12], line 5[0m, in [0;36mload_model[0;34m(save_dir, num_classes, model_file_name)[0m
+    [1;32m      3[0m checkpoint [38;5;241m=[39m torch[38;5;241m.[39mload(save_dir [38;5;241m+[39m [38;5;124mf[39m[38;5;124m'[39m[38;5;132;01m{[39;00mmodel_file_name[38;5;132;01m}[39;00m[38;5;124m.pth[39m[38;5;124m'[39m, weights_only[38;5;241m=[39m[38;5;28;01mTrue[39;00m)
+    [1;32m      4[0m model[38;5;241m.[39mload_state_dict(checkpoint[[38;5;124m'[39m[38;5;124mmodel_state_dict[39m[38;5;124m'[39m])
+    [0;32m----> 5[0m optimizer [38;5;241m=[39m [43mmodel[49m[38;5;241;43m.[39;49m[43mload_state_dict[49m[43m([49m[43mcheckpoint[49m[43m[[49m[38;5;124;43m'[39;49m[38;5;124;43moptimizer_state_dict[39;49m[38;5;124;43m'[39;49m[43m][49m[43m)[49m
+    [1;32m      6[0m epoch [38;5;241m=[39m checkpoint[[38;5;124m'[39m[38;5;124mepoch[39m[38;5;124m'[39m]
+    [1;32m      7[0m [38;5;28;01mreturn[39;00m model, optimizer, epoch
+
+    File [0;32m~/Documents/SC_TSL_15092024_plate_detect/.venv/lib/python3.9/site-packages/torch/nn/modules/module.py:2584[0m, in [0;36mModule.load_state_dict[0;34m(self, state_dict, strict, assign)[0m
+    [1;32m   2576[0m         error_msgs[38;5;241m.[39minsert(
+    [1;32m   2577[0m             [38;5;241m0[39m,
+    [1;32m   2578[0m             [38;5;124m"[39m[38;5;124mMissing key(s) in state_dict: [39m[38;5;132;01m{}[39;00m[38;5;124m. [39m[38;5;124m"[39m[38;5;241m.[39mformat(
+    [1;32m   2579[0m                 [38;5;124m"[39m[38;5;124m, [39m[38;5;124m"[39m[38;5;241m.[39mjoin([38;5;124mf[39m[38;5;124m'[39m[38;5;124m"[39m[38;5;132;01m{[39;00mk[38;5;132;01m}[39;00m[38;5;124m"[39m[38;5;124m'[39m [38;5;28;01mfor[39;00m k [38;5;129;01min[39;00m missing_keys)
+    [1;32m   2580[0m             ),
+    [1;32m   2581[0m         )
+    [1;32m   2583[0m [38;5;28;01mif[39;00m [38;5;28mlen[39m(error_msgs) [38;5;241m>[39m [38;5;241m0[39m:
+    [0;32m-> 2584[0m     [38;5;28;01mraise[39;00m [38;5;167;01mRuntimeError[39;00m(
+    [1;32m   2585[0m         [38;5;124m"[39m[38;5;124mError(s) in loading state_dict for [39m[38;5;132;01m{}[39;00m[38;5;124m:[39m[38;5;130;01m\n[39;00m[38;5;130;01m\t[39;00m[38;5;132;01m{}[39;00m[38;5;124m"[39m[38;5;241m.[39mformat(
+    [1;32m   2586[0m             [38;5;28mself[39m[38;5;241m.[39m[38;5;18m__class__[39m[38;5;241m.[39m[38;5;18m__name__[39m, [38;5;124m"[39m[38;5;130;01m\n[39;00m[38;5;130;01m\t[39;00m[38;5;124m"[39m[38;5;241m.[39mjoin(error_msgs)
+    [1;32m   2587[0m         )
+    [1;32m   2588[0m     )
+    [1;32m   2589[0m [38;5;28;01mreturn[39;00m _IncompatibleKeys(missing_keys, unexpected_keys)
+
+    [0;31mRuntimeError[0m: Error(s) in loading state_dict for FasterRCNN:
+        Missing key(s) in state_dict: "backbone.body.conv1.weight", "backbone.body.bn1.weight", "backbone.body.bn1.bias", "backbone.body.bn1.running_mean", "backbone.body.bn1.running_var", "backbone.body.layer1.0.conv1.weight", "backbone.body.layer1.0.bn1.weight", "backbone.body.layer1.0.bn1.bias", "backbone.body.layer1.0.bn1.running_mean", "backbone.body.layer1.0.bn1.running_var", "backbone.body.layer1.0.conv2.weight", "backbone.body.layer1.0.bn2.weight", "backbone.body.layer1.0.bn2.bias", "backbone.body.layer1.0.bn2.running_mean", "backbone.body.layer1.0.bn2.running_var", "backbone.body.layer1.0.conv3.weight", "backbone.body.layer1.0.bn3.weight", "backbone.body.layer1.0.bn3.bias", "backbone.body.layer1.0.bn3.running_mean", "backbone.body.layer1.0.bn3.running_var", "backbone.body.layer1.0.downsample.0.weight", "backbone.body.layer1.0.downsample.1.weight", "backbone.body.layer1.0.downsample.1.bias", "backbone.body.layer1.0.downsample.1.running_mean", "backbone.body.layer1.0.downsample.1.running_var", "backbone.body.layer1.1.conv1.weight", "backbone.body.layer1.1.bn1.weight", "backbone.body.layer1.1.bn1.bias", "backbone.body.layer1.1.bn1.running_mean", "backbone.body.layer1.1.bn1.running_var", "backbone.body.layer1.1.conv2.weight", "backbone.body.layer1.1.bn2.weight", "backbone.body.layer1.1.bn2.bias", "backbone.body.layer1.1.bn2.running_mean", "backbone.body.layer1.1.bn2.running_var", "backbone.body.layer1.1.conv3.weight", "backbone.body.layer1.1.bn3.weight", "backbone.body.layer1.1.bn3.bias", "backbone.body.layer1.1.bn3.running_mean", "backbone.body.layer1.1.bn3.running_var", "backbone.body.layer1.2.conv1.weight", "backbone.body.layer1.2.bn1.weight", "backbone.body.layer1.2.bn1.bias", "backbone.body.layer1.2.bn1.running_mean", "backbone.body.layer1.2.bn1.running_var", "backbone.body.layer1.2.conv2.weight", "backbone.body.layer1.2.bn2.weight", "backbone.body.layer1.2.bn2.bias", "backbone.body.layer1.2.bn2.running_mean", "backbone.body.layer1.2.bn2.running_var", "backbone.body.layer1.2.conv3.weight", "backbone.body.layer1.2.bn3.weight", "backbone.body.layer1.2.bn3.bias", "backbone.body.layer1.2.bn3.running_mean", "backbone.body.layer1.2.bn3.running_var", "backbone.body.layer2.0.conv1.weight", "backbone.body.layer2.0.bn1.weight", "backbone.body.layer2.0.bn1.bias", "backbone.body.layer2.0.bn1.running_mean", "backbone.body.layer2.0.bn1.running_var", "backbone.body.layer2.0.conv2.weight", "backbone.body.layer2.0.bn2.weight", "backbone.body.layer2.0.bn2.bias", "backbone.body.layer2.0.bn2.running_mean", "backbone.body.layer2.0.bn2.running_var", "backbone.body.layer2.0.conv3.weight", "backbone.body.layer2.0.bn3.weight", "backbone.body.layer2.0.bn3.bias", "backbone.body.layer2.0.bn3.running_mean", "backbone.body.layer2.0.bn3.running_var", "backbone.body.layer2.0.downsample.0.weight", "backbone.body.layer2.0.downsample.1.weight", "backbone.body.layer2.0.downsample.1.bias", "backbone.body.layer2.0.downsample.1.running_mean", "backbone.body.layer2.0.downsample.1.running_var", "backbone.body.layer2.1.conv1.weight", "backbone.body.layer2.1.bn1.weight", "backbone.body.layer2.1.bn1.bias", "backbone.body.layer2.1.bn1.running_mean", "backbone.body.layer2.1.bn1.running_var", "backbone.body.layer2.1.conv2.weight", "backbone.body.layer2.1.bn2.weight", "backbone.body.layer2.1.bn2.bias", "backbone.body.layer2.1.bn2.running_mean", "backbone.body.layer2.1.bn2.running_var", "backbone.body.layer2.1.conv3.weight", "backbone.body.layer2.1.bn3.weight", "backbone.body.layer2.1.bn3.bias", "backbone.body.layer2.1.bn3.running_mean", "backbone.body.layer2.1.bn3.running_var", "backbone.body.layer2.2.conv1.weight", "backbone.body.layer2.2.bn1.weight", "backbone.body.layer2.2.bn1.bias", "backbone.body.layer2.2.bn1.running_mean", "backbone.body.layer2.2.bn1.running_var", "backbone.body.layer2.2.conv2.weight", "backbone.body.layer2.2.bn2.weight", "backbone.body.layer2.2.bn2.bias", "backbone.body.layer2.2.bn2.running_mean", "backbone.body.layer2.2.bn2.running_var", "backbone.body.layer2.2.conv3.weight", "backbone.body.layer2.2.bn3.weight", "backbone.body.layer2.2.bn3.bias", "backbone.body.layer2.2.bn3.running_mean", "backbone.body.layer2.2.bn3.running_var", "backbone.body.layer2.3.conv1.weight", "backbone.body.layer2.3.bn1.weight", "backbone.body.layer2.3.bn1.bias", "backbone.body.layer2.3.bn1.running_mean", "backbone.body.layer2.3.bn1.running_var", "backbone.body.layer2.3.conv2.weight", "backbone.body.layer2.3.bn2.weight", "backbone.body.layer2.3.bn2.bias", "backbone.body.layer2.3.bn2.running_mean", "backbone.body.layer2.3.bn2.running_var", "backbone.body.layer2.3.conv3.weight", "backbone.body.layer2.3.bn3.weight", "backbone.body.layer2.3.bn3.bias", "backbone.body.layer2.3.bn3.running_mean", "backbone.body.layer2.3.bn3.running_var", "backbone.body.layer3.0.conv1.weight", "backbone.body.layer3.0.bn1.weight", "backbone.body.layer3.0.bn1.bias", "backbone.body.layer3.0.bn1.running_mean", "backbone.body.layer3.0.bn1.running_var", "backbone.body.layer3.0.conv2.weight", "backbone.body.layer3.0.bn2.weight", "backbone.body.layer3.0.bn2.bias", "backbone.body.layer3.0.bn2.running_mean", "backbone.body.layer3.0.bn2.running_var", "backbone.body.layer3.0.conv3.weight", "backbone.body.layer3.0.bn3.weight", "backbone.body.layer3.0.bn3.bias", "backbone.body.layer3.0.bn3.running_mean", "backbone.body.layer3.0.bn3.running_var", "backbone.body.layer3.0.downsample.0.weight", "backbone.body.layer3.0.downsample.1.weight", "backbone.body.layer3.0.downsample.1.bias", "backbone.body.layer3.0.downsample.1.running_mean", "backbone.body.layer3.0.downsample.1.running_var", "backbone.body.layer3.1.conv1.weight", "backbone.body.layer3.1.bn1.weight", "backbone.body.layer3.1.bn1.bias", "backbone.body.layer3.1.bn1.running_mean", "backbone.body.layer3.1.bn1.running_var", "backbone.body.layer3.1.conv2.weight", "backbone.body.layer3.1.bn2.weight", "backbone.body.layer3.1.bn2.bias", "backbone.body.layer3.1.bn2.running_mean", "backbone.body.layer3.1.bn2.running_var", "backbone.body.layer3.1.conv3.weight", "backbone.body.layer3.1.bn3.weight", "backbone.body.layer3.1.bn3.bias", "backbone.body.layer3.1.bn3.running_mean", "backbone.body.layer3.1.bn3.running_var", "backbone.body.layer3.2.conv1.weight", "backbone.body.layer3.2.bn1.weight", "backbone.body.layer3.2.bn1.bias", "backbone.body.layer3.2.bn1.running_mean", "backbone.body.layer3.2.bn1.running_var", "backbone.body.layer3.2.conv2.weight", "backbone.body.layer3.2.bn2.weight", "backbone.body.layer3.2.bn2.bias", "backbone.body.layer3.2.bn2.running_mean", "backbone.body.layer3.2.bn2.running_var", "backbone.body.layer3.2.conv3.weight", "backbone.body.layer3.2.bn3.weight", "backbone.body.layer3.2.bn3.bias", "backbone.body.layer3.2.bn3.running_mean", "backbone.body.layer3.2.bn3.running_var", "backbone.body.layer3.3.conv1.weight", "backbone.body.layer3.3.bn1.weight", "backbone.body.layer3.3.bn1.bias", "backbone.body.layer3.3.bn1.running_mean", "backbone.body.layer3.3.bn1.running_var", "backbone.body.layer3.3.conv2.weight", "backbone.body.layer3.3.bn2.weight", "backbone.body.layer3.3.bn2.bias", "backbone.body.layer3.3.bn2.running_mean", "backbone.body.layer3.3.bn2.running_var", "backbone.body.layer3.3.conv3.weight", "backbone.body.layer3.3.bn3.weight", "backbone.body.layer3.3.bn3.bias", "backbone.body.layer3.3.bn3.running_mean", "backbone.body.layer3.3.bn3.running_var", "backbone.body.layer3.4.conv1.weight", "backbone.body.layer3.4.bn1.weight", "backbone.body.layer3.4.bn1.bias", "backbone.body.layer3.4.bn1.running_mean", "backbone.body.layer3.4.bn1.running_var", "backbone.body.layer3.4.conv2.weight", "backbone.body.layer3.4.bn2.weight", "backbone.body.layer3.4.bn2.bias", "backbone.body.layer3.4.bn2.running_mean", "backbone.body.layer3.4.bn2.running_var", "backbone.body.layer3.4.conv3.weight", "backbone.body.layer3.4.bn3.weight", "backbone.body.layer3.4.bn3.bias", "backbone.body.layer3.4.bn3.running_mean", "backbone.body.layer3.4.bn3.running_var", "backbone.body.layer3.5.conv1.weight", "backbone.body.layer3.5.bn1.weight", "backbone.body.layer3.5.bn1.bias", "backbone.body.layer3.5.bn1.running_mean", "backbone.body.layer3.5.bn1.running_var", "backbone.body.layer3.5.conv2.weight", "backbone.body.layer3.5.bn2.weight", "backbone.body.layer3.5.bn2.bias", "backbone.body.layer3.5.bn2.running_mean", "backbone.body.layer3.5.bn2.running_var", "backbone.body.layer3.5.conv3.weight", "backbone.body.layer3.5.bn3.weight", "backbone.body.layer3.5.bn3.bias", "backbone.body.layer3.5.bn3.running_mean", "backbone.body.layer3.5.bn3.running_var", "backbone.body.layer4.0.conv1.weight", "backbone.body.layer4.0.bn1.weight", "backbone.body.layer4.0.bn1.bias", "backbone.body.layer4.0.bn1.running_mean", "backbone.body.layer4.0.bn1.running_var", "backbone.body.layer4.0.conv2.weight", "backbone.body.layer4.0.bn2.weight", "backbone.body.layer4.0.bn2.bias", "backbone.body.layer4.0.bn2.running_mean", "backbone.body.layer4.0.bn2.running_var", "backbone.body.layer4.0.conv3.weight", "backbone.body.layer4.0.bn3.weight", "backbone.body.layer4.0.bn3.bias", "backbone.body.layer4.0.bn3.running_mean", "backbone.body.layer4.0.bn3.running_var", "backbone.body.layer4.0.downsample.0.weight", "backbone.body.layer4.0.downsample.1.weight", "backbone.body.layer4.0.downsample.1.bias", "backbone.body.layer4.0.downsample.1.running_mean", "backbone.body.layer4.0.downsample.1.running_var", "backbone.body.layer4.1.conv1.weight", "backbone.body.layer4.1.bn1.weight", "backbone.body.layer4.1.bn1.bias", "backbone.body.layer4.1.bn1.running_mean", "backbone.body.layer4.1.bn1.running_var", "backbone.body.layer4.1.conv2.weight", "backbone.body.layer4.1.bn2.weight", "backbone.body.layer4.1.bn2.bias", "backbone.body.layer4.1.bn2.running_mean", "backbone.body.layer4.1.bn2.running_var", "backbone.body.layer4.1.conv3.weight", "backbone.body.layer4.1.bn3.weight", "backbone.body.layer4.1.bn3.bias", "backbone.body.layer4.1.bn3.running_mean", "backbone.body.layer4.1.bn3.running_var", "backbone.body.layer4.2.conv1.weight", "backbone.body.layer4.2.bn1.weight", "backbone.body.layer4.2.bn1.bias", "backbone.body.layer4.2.bn1.running_mean", "backbone.body.layer4.2.bn1.running_var", "backbone.body.layer4.2.conv2.weight", "backbone.body.layer4.2.bn2.weight", "backbone.body.layer4.2.bn2.bias", "backbone.body.layer4.2.bn2.running_mean", "backbone.body.layer4.2.bn2.running_var", "backbone.body.layer4.2.conv3.weight", "backbone.body.layer4.2.bn3.weight", "backbone.body.layer4.2.bn3.bias", "backbone.body.layer4.2.bn3.running_mean", "backbone.body.layer4.2.bn3.running_var", "backbone.fpn.inner_blocks.0.0.weight", "backbone.fpn.inner_blocks.0.1.weight", "backbone.fpn.inner_blocks.0.1.bias", "backbone.fpn.inner_blocks.0.1.running_mean", "backbone.fpn.inner_blocks.0.1.running_var", "backbone.fpn.inner_blocks.1.0.weight", "backbone.fpn.inner_blocks.1.1.weight", "backbone.fpn.inner_blocks.1.1.bias", "backbone.fpn.inner_blocks.1.1.running_mean", "backbone.fpn.inner_blocks.1.1.running_var", "backbone.fpn.inner_blocks.2.0.weight", "backbone.fpn.inner_blocks.2.1.weight", "backbone.fpn.inner_blocks.2.1.bias", "backbone.fpn.inner_blocks.2.1.running_mean", "backbone.fpn.inner_blocks.2.1.running_var", "backbone.fpn.inner_blocks.3.0.weight", "backbone.fpn.inner_blocks.3.1.weight", "backbone.fpn.inner_blocks.3.1.bias", "backbone.fpn.inner_blocks.3.1.running_mean", "backbone.fpn.inner_blocks.3.1.running_var", "backbone.fpn.layer_blocks.0.0.weight", "backbone.fpn.layer_blocks.0.1.weight", "backbone.fpn.layer_blocks.0.1.bias", "backbone.fpn.layer_blocks.0.1.running_mean", "backbone.fpn.layer_blocks.0.1.running_var", "backbone.fpn.layer_blocks.1.0.weight", "backbone.fpn.layer_blocks.1.1.weight", "backbone.fpn.layer_blocks.1.1.bias", "backbone.fpn.layer_blocks.1.1.running_mean", "backbone.fpn.layer_blocks.1.1.running_var", "backbone.fpn.layer_blocks.2.0.weight", "backbone.fpn.layer_blocks.2.1.weight", "backbone.fpn.layer_blocks.2.1.bias", "backbone.fpn.layer_blocks.2.1.running_mean", "backbone.fpn.layer_blocks.2.1.running_var", "backbone.fpn.layer_blocks.3.0.weight", "backbone.fpn.layer_blocks.3.1.weight", "backbone.fpn.layer_blocks.3.1.bias", "backbone.fpn.layer_blocks.3.1.running_mean", "backbone.fpn.layer_blocks.3.1.running_var", "rpn.head.conv.0.0.weight", "rpn.head.conv.0.0.bias", "rpn.head.conv.1.0.weight", "rpn.head.conv.1.0.bias", "rpn.head.cls_logits.weight", "rpn.head.cls_logits.bias", "rpn.head.bbox_pred.weight", "rpn.head.bbox_pred.bias", "roi_heads.box_head.0.0.weight", "roi_heads.box_head.0.1.weight", "roi_heads.box_head.0.1.bias", "roi_heads.box_head.0.1.running_mean", "roi_heads.box_head.0.1.running_var", "roi_heads.box_head.1.0.weight", "roi_heads.box_head.1.1.weight", "roi_heads.box_head.1.1.bias", "roi_heads.box_head.1.1.running_mean", "roi_heads.box_head.1.1.running_var", "roi_heads.box_head.2.0.weight", "roi_heads.box_head.2.1.weight", "roi_heads.box_head.2.1.bias", "roi_heads.box_head.2.1.running_mean", "roi_heads.box_head.2.1.running_var", "roi_heads.box_head.3.0.weight", "roi_heads.box_head.3.1.weight", "roi_heads.box_head.3.1.bias", "roi_heads.box_head.3.1.running_mean", "roi_heads.box_head.3.1.running_var", "roi_heads.box_head.5.weight", "roi_heads.box_head.5.bias", "roi_heads.box_predictor.cls_score.weight", "roi_heads.box_predictor.cls_score.bias", "roi_heads.box_predictor.bbox_pred.weight", "roi_heads.box_predictor.bbox_pred.bias". 
+        Unexpected key(s) in state_dict: "state", "param_groups". 
+
+</div>
+
+:::
+
+This produced an error when loading the model:
+
+``` {bash}
+{
+    "name": "RuntimeError",
+    "message": "Error(s) in loading state_dict for FasterRCNN:
+\tMissing key(s) in state_dict: ... \"param_groups\". ",
+    "stack": "---------------------------------------------------------------------------
+RuntimeError                              Traceback (most recent call last)
+File /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/analyses/0002_functional_Faster_R-CNN.qmd:1
+----> 1 model, optimizer, epoch = helper_training_functions.load_model('checkpoints/', 2, 'checkpoint_epoch_0')
+      3 eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test,device)
+      5 print(eval_metrics, '\
+', shape(eval_metrics))
+
+File ~/Documents/My_Repos/SC_TSL_15092024_plate_detect/src/plate_detect/helper_training_functions.py:101, in load_model(save_dir, num_classes, model_file_name)
+     99 checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
+    100 model.load_state_dict(checkpoint['model_state_dict'])
+--> 101 optimizer = model.load_state_dict(checkpoint['optimizer_state_dict'])
+    102 epoch = checkpoint['epoch']
+    103 return model, optimizer, epoch
+
+File ~/Documents/My_Repos/SC_TSL_15092024_plate_detect/venv/lib/python3.12/site-packages/torch/nn/modules/module.py:2153, in Module.load_state_dict(self, state_dict, strict, assign)
+   2148         error_msgs.insert(
+   2149             0, 'Missing key(s) in state_dict: {}. '.format(
+   2150                 ', '.join(f'\"{k}\"' for k in missing_keys)))
+   2152 if len(error_msgs) > 0:
+-> 2153     raise RuntimeError('Error(s) in loading state_dict for {}:\
+\\t{}'.format(
+   2154                        self.__class__.__name__, \"\
+\\t\".join(error_msgs)))
+   2155 return _IncompatibleKeys(missing_keys, unexpected_keys)
+
+RuntimeError: Error(s) in loading state_dict for FasterRCNN:
+\tMissing key(s) in state_dict: \"backbone.body.conv1.weight\", ... \"roi_heads.box_predictor.bbox_pred.bias\". 
+\tUnexpected key(s) in state_dict: \"state\", \"param_groups\". "
+}
+```
+
+This error is relates to handling loading of the serialised optimiser
+object by the save function. This function must correctly load the
+optimizer in instances where I want to recommence training from a saved
+checkpoint.  
+
+I modififed the load_model function according to
+[this](https://pytorch.org/tutorials/recipes/recipes/saving_and_loading_a_general_checkpoint.html)
+article.  
+
+First, the saved state_dict is
+[deserialised](https://learn.microsoft.com/en-us/dotnet/standard/serialization/)
+from the .pth file, then it is passed to load_state_dict.
+‘load_state_dict’ expects a
+[torch.optim.Optimizer](https://pytorch.org/docs/stable/optim.html#torch.optim.Optimizer)
+object. In the previous load_model(), it gets a dict object. To solve
+this, I must call load_state_dict on the SGD optimizer. The optimizer
+should be initialised and returned by the
+get_model_instance_object_detection() function, but currently only the
+train() function initialises an optimizer. I think it would be best to
+isolate model and optimizer initialisation in the model getter. This
+way, there isn’t a chance that the optimizer gets redefined at some
+point, causing strange behaviour.  
+
+This will require modifications to
+get_model_instance_object_detection(), load_model(), and train() as
+follows:  
+
+``` python
+def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_fpn_v2:
+    # New weights with accuracy 80.858%
+    weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT # alias is .DEFAULT suffix, weights = None is random initialisation, box MAP 46.7, params, 43.7M, GFLOPS 280.37 https://github.com/pytorch/vision/pull/5763
+    model = fasterrcnn_resnet50_fpn_v2(weights=weights, box_score_thresh=0.0001)
+    preprocess = weights.transforms()
+    # finetuning pretrained model by transfer learning
+    # get num of input features for classifier
+    in_features = model.roi_heads.box_predictor.cls_score.in_features
+
+    params = [p for p in model.parameters() if p.requires_grad]
+    optimizer = torch.optim.SGD( # optimizer defined in model getter according to pytorch 'recipes'
+        params,
+        lr=0.005,
+        momentum=0.9,
+        weight_decay=0.0005
+    )
+    # replace the pre-trained head with a new one
+    model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_class)
+    return model, optimizer, preprocess
+```
+
+``` python
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir, optimizer): 
+    model.train()
+    # Initialize lists to store metrics
+    train_losses = []
+    
+    # and a learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=3,
+        gamma=0.1
+    )
+
+    for epoch in range(num_epochs):
+    # train for one epoch, printing every 10 iterations
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+    
+    # Get the average loss for this epoch
+        epoch_loss = metric_logger.meters['loss'].global_avg
+        train_losses.append(epoch_loss)
+
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
+        
+        # Update the learning rate
+        lr_scheduler.step()
+
+    return num_epochs + precedent_epoch, train_losses
+```
+
+``` python
+def load_model(save_dir: str, num_classes: int, model_file_name: str):
+    model, optimizer, preprocess = get_model_instance_object_detection(num_classes)
+    checkpoint = torch.load(save_dir + f'{model_file_name}.pth', weights_only=True)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    epoch = checkpoint['epoch']
+    return model, optimizer, epoch
+```
+
+After the above modifications, I ran the following script:
+
+``` python
+model, optimizer, epoch = load_model('../checkpoints/', num_class, 'checkpoint_epoch_0')
+
+eval_metrics = evaluate_model(model, data_loader_test, device)
+
+print(eval_metrics, '\n', len(eval_metrics))
+
+print("\n -end-")
+```
+
+    creating index...
+    index created!
+    Test:  [0/5]  eta: 0:00:09  model_time: 1.9188 (1.9188)  evaluator_time: 0.0023 (0.0023)  time: 1.9293  data: 0.0082
+    Test:  [4/5]  eta: 0:00:01  model_time: 1.9424 (1.9325)  evaluator_time: 0.0024 (0.0026)  time: 1.9434  data: 0.0083
+    Test: Total time: 0:00:09 (1.9435 s / it)
+    Averaged stats: model_time: 1.9424 (1.9325)  evaluator_time: 0.0024 (0.0026)
+    Accumulating evaluation results...
+    DONE (t=0.00s).
+    IoU metric: bbox
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+     Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.000
+     Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.000
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = -1.000
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = -1.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+    [array([ 0.,  0.,  0., -1., -1.,  0.,  0.,  0.,  0., -1., -1.,  0.])] 
+     1
+
+     -end-
+
+… the evaluator now runs again!  
+It may be sensible to tuck data_loader, data_loader_test, as well as
+validation and training subset and indice permutation lists, into
+load_model. With that being said, I’m conscious that the function
+signatures are huge, as well as their return statements. I don’t think I
+should add to that. Further to this, implementation of these helper
+functions in different object detection contexts will likely be suited
+to different batching parameters based on variables like dataset size.
+For this reason, I think it’s best load_model() handles loading the
+optimizer and model deserialisation and variable loading only.  
+::: {.callout-note collapse=“true”} I just learned about \*args and
+\*\*kwargs. I think this could help cut down the complexity of the
+function signatures. I will try to use these from now on, where
+appropriate. :::
+
+The standard out based on the helper_training_functions defined up to
+this point is:
+
+``` {bash}
+Project root directory: /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/analyses
+Training labels csv file: /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/lib/labels.csv
+Training dataset directory: /Users/cla24mas/Documents/My_Repos/SC_TSL_15092024_plate_detect/raw/positives
+creating index...
+index created!
+Test:  [ 0/50]  eta: 0:08:31  model_time: 10.2026 (10.2026)  evaluator_time: 0.0037 (0.0037)  time: 10.2212  data: 0.0148
+Test:  [49/50]  eta: 0:00:10  model_time: 10.2246 (10.6478)  evaluator_time: 0.0047 (0.0055)  time: 10.4892  data: 0.0122
+Test: Total time: 0:08:53 (10.6671 s / it)
+Averaged stats: model_time: 10.2246 (10.6478)  evaluator_time: 0.0047 (0.0055)
+Accumulating evaluation results...
+DONE (t=0.07s).
+IoU metric: bbox
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.000
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.000
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.000
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.000
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+[array([ 0.,  0.,  0., -1.,  0.,  0.,  0.,  0.,  0., -1.,  0.,  0.])] 
+ 1
+
+ -end-
+```
+
+This output is interesting. Firstly, the loss metrics are missing from
+eval_metrics, yet are output at the end of the previous section. This is
+because the two are handled separately! The evaluate_model() function is
+using [coco_eval](../src/torchvision_deps/coco_eval.py), returning
+coco_evaluator’s ‘bbox’ stats. The training loss metrics are generated
+by [engine’s](../src/torchvision_deps/engine.py) ‘train_one_epoch’. This
+means to handle plotting of evaluation and training metrics, I will need
+to modify coco_eval, engine and/or utils in some way. Firstly, to
+clarify why the call to plot_eval_metrics is raising a type-error, I
+will print coco_evaluator as well as the eval_metrics returned from the
+call to evaluate_model:
+
+``` python
+def evaluate_model(model, data_loader_test,device):
+    val_metrics = []
+    model.eval()
+
+    coco_evaluator = evaluate(model, data_loader_test, device=device)
+    print(coco_evaluator)
+    # Extract evaluation metrics
+    eval_stats = coco_evaluator.coco_eval['bbox'].stats
+    val_metrics.append(eval_stats)
+    return val_metrics
+```
+
+``` python
+eval_metrics = evaluate_model(model, data_loader_test, device)
+
+print(eval_metrics, '\n', len(eval_metrics))
+```
+
+    creating index...
+    index created!
+    Test:  [0/5]  eta: 0:00:09  model_time: 1.9144 (1.9144)  evaluator_time: 0.0024 (0.0024)  time: 1.9251  data: 0.0083
+    Test:  [4/5]  eta: 0:00:01  model_time: 1.9243 (1.9285)  evaluator_time: 0.0024 (0.0026)  time: 1.9395  data: 0.0084
+    Test: Total time: 0:00:09 (1.9396 s / it)
+    Averaged stats: model_time: 1.9243 (1.9285)  evaluator_time: 0.0024 (0.0026)
+    Accumulating evaluation results...
+    DONE (t=0.00s).
+    IoU metric: bbox
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+     Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.000
+     Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.000
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = -1.000
+     Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = -1.000
+     Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+    <torchvision_deps.coco_eval.CocoEvaluator object at 0x106eabd90>
+    [array([ 0.,  0.,  0., -1., -1.,  0.,  0.,  0.,  0., -1., -1.,  0.])] 
+     1
+
+The CocoEvaluator class is defined in
+[torchvision_deps](../src/torchvision_deps/coco_eval.py).  
+- Based on the print(eval_metrics) in the former code block, the array
+indexing in plot_eval_metrics needs to be adjusted. ‘eval_metrics’ is a
+one-dimensional array of floats, where each index is one of the 12
+metrics outlined [here](https://cocodataset.org/#detection-eval).
+Currently, I’m treating it like a dict.  
+
+- Currently, I’m trying to plot the average loss. While this would be
+  okay if I were training for many epochs, that won’t work when trying
+  to create a line plot for one epoch’s training. Instead, I want to
+  plot the metrics as the training or evaluation happens. Currently I am
+  using train_one_epoch() and evaluate() from
+  [engine](../src/torchvision_deps/engine.py) in torchvision_deps. They
+  use PyTorch’s
+  [MetricLogger](https://pytorch.org/tnt/stable/utils/generated/torchtnt.utils.loggers.MetricLogger.html)
+  to store metrics, where ‘log_every()’ method from MetricLogger is
+  handling the print frequency of metrics as training/evaluation
+  progresses through the epoch. I want to plot the data that is
+  currently printed by log_every(). This will require modification to
+  either log_every or the metric loggers in engine’s train_one_epoch.
+  This discussion is helpful:
+  https://discuss.pytorch.org/t/object-detection-fine-tuning-interpreting-printout-of-train-one-epoch/193496/2  
+
+I realised the MetricLogger class is defined locally in
+[utils.py](../src/torchvision_deps/T_and_utils/utils.py). ‘log_every()’
+is a method of MetricLogger. I want to avoid modifying dependency files
+as much as possible.  
+
+I realised I can just change the way I handle the metric logger returned
+from train_one_epoch in my train() function. Before I modify it, I want
+to retrain on a small batch (not the full epoch) to see print the metric
+logger, just to check that the granular progress through the epoch
+survives ‘train_one_epoch’:  
+
+``` python
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir, optimizer): 
+    model.train()
+    # Initialize lists to store metrics
+    train_losses = []
+    
+    # and a learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=3,
+        gamma=0.1
+    )
+
+    for epoch in range(num_epochs):
+    # train for one epoch, printing every 10 iterations
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=10)
+
+        for k, v in metric_logger.meters.items():
+            print(f'Key: {k} \t Value: {v}')
+    
+    # Get the average loss for this epoch
+        epoch_loss = metric_logger.meters['loss'].global_avg
+        train_losses.append(epoch_loss)
+
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, (save_dir + 'checkpoints'))
+        
+        # Update the learning rate
+        lr_scheduler.step()
+
+    return num_epochs + precedent_epoch, train_losses
+```
+
+Then execute the following script for a short training session, after
+which all keys in metric_logger are printed:
+
+``` python
+model, optimizer, preprocess = get_model_instance_object_detection(2)
+
+dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
+        img_dir=str(img_dir), 
+        annotations_file=str(annotations_file),
+        transforms=preprocess, 
+        )
+
+# split the dataset in train and test set
+dataset_size = 20
+#validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
+indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
+
+#dataset_validation = torch.utils.data.Subset(dataset, indices[-validation_size:])
+dataset_train = torch.utils.data.Subset(dataset, indices[:])
+
+data_loader = torch.utils.data.DataLoader(
+    dataset_train,
+    batch_size=1,
+    shuffle=True,
+    collate_fn=utils.collate_fn
+)
+
+num_epochs = 1
+precedent_epoch = 0
+save_dir = '../'
+
+epoch, loss_metrics = train(model, data_loader, None, device, num_epochs, precedent_epoch, save_dir, optimizer)
+
+print("\n -end-")
+```
+
+    /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+      with torch.cuda.amp.autocast(enabled=scaler is not None):
+
+    Epoch: [0]  [ 0/20]  eta: 0:01:03  lr: 0.000268  loss: 12.6455 (12.6455)  loss_classifier: 0.8115 (0.8115)  loss_box_reg: 0.0013 (0.0013)  loss_objectness: 0.6713 (0.6713)  loss_rpn_box_reg: 11.1614 (11.1614)  time: 3.1718  data: 0.0083
+    Epoch: [0]  [10/20]  eta: 0:00:31  lr: 0.002897  loss: 12.0527 (11.8395)  loss_classifier: 0.6234 (0.5498)  loss_box_reg: 0.0014 (0.0018)  loss_objectness: 0.0994 (0.2061)  loss_rpn_box_reg: 11.0403 (11.0817)  time: 3.1133  data: 0.0104
+    Epoch: [0]  [19/20]  eta: 0:00:03  lr: 0.005000  loss: 10.8148 (10.1502)  loss_classifier: 0.1609 (0.3214)  loss_box_reg: 0.0014 (0.0018)  loss_objectness: 0.0994 (0.1725)  loss_rpn_box_reg: 10.5534 (9.6546)  time: 3.0967  data: 0.0105
+    Epoch: [0] Total time: 0:01:01 (3.0968 s / it)
+    Key: lr      Value: 0.005000
+    Key: loss    Value: 10.8148 (10.1502)
+    Key: loss_classifier     Value: 0.1609 (0.3214)
+    Key: loss_box_reg    Value: 0.0014 (0.0018)
+    Key: loss_objectness     Value: 0.0994 (0.1725)
+    Key: loss_rpn_box_reg    Value: 10.5534 (9.6546)
+    Checkpoint saved: ../checkpoints/checkpoint_epoch_0.pth
+
+     -end-
+
+The keys in metric_logger.meters are ‘loss, loss_classifier,
+loss_box_reg, loss_objectness, loss_rpn_box_reg’. ‘train_one_epoch’
+averages the meters’ value throughout training by making a call to
+MetricLogger.update().
+
+Firstly I will modify the MetricLogger class, adding the
+‘intra_epoch_loss’ member. I will store the log_message here for later
+access, as follows:
+
+``` python
+from collections import defaultdict
+
+class MetricLogger:
+    def __init__(self, delimiter="\t"):
+        self.meters = defaultdict(SmoothedValue)
+        self.delimiter = delimiter
+
+        # there is definitely a more elegant way to do this, but this should work
+        self.intra_epoch_loss = defaultdict(list)
+
+    def update(self, **kwargs):
+        for k, v in kwargs.items():
+            if isinstance(v, torch.Tensor):
+                v = v.item()
+            assert isinstance(v, (float, int))
+            self.meters[k].update(v)
+
+    def __getattr__(self, attr):
+        if attr in self.meters:
+            return self.meters[attr]
+        if attr in self.__dict__:
+            return self.__dict__[attr]
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{attr}'")
+
+    def __str__(self):
+        loss_str = []
+        for name, meter in self.meters.items():
+            loss_str.append(f"{name}: {str(meter)}")
+        return self.delimiter.join(loss_str)
+
+    def synchronize_between_processes(self):
+        for meter in self.meters.values():
+            meter.synchronize_between_processes()
+
+    def add_meter(self, name, meter):
+        self.meters[name] = meter
+
+    def log_every(self, iterable, print_freq, header=None):
+        i = 0
+        if not header:
+            header = ""
+        start_time = time.time()
+        end = time.time()
+        iter_time = SmoothedValue(fmt="{avg:.4f}")
+        data_time = SmoothedValue(fmt="{avg:.4f}")
+        space_fmt = ":" + str(len(str(len(iterable)))) + "d"
+        if torch.cuda.is_available():
+            log_msg = self.delimiter.join(
+                [
+                    header,
+                    "[{0" + space_fmt + "}/{1}]",
+                    "eta: {eta}",
+                    "{meters}",
+                    "time: {time}",
+                    "data: {data}",
+                    "max mem: {memory:.0f}",
+                ]
+            )
+        else:
+            log_msg = self.delimiter.join(
+                [header, "[{0" + space_fmt + "}/{1}]", "eta: {eta}", "{meters}", "time: {time}", "data: {data}"]
+            )
+        MB = 1024.0 * 1024.0
+        for obj in iterable:
+            data_time.update(time.time() - end)
+            yield obj
+            iter_time.update(time.time() - end)
+            if i % print_freq == 0 or i == len(iterable) - 1:
+                eta_seconds = iter_time.global_avg * (len(iterable) - i)
+                eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
+                if torch.cuda.is_available():
+                    
+                    for k, v in self.meters.items():        # <------ insertion here
+                        self.intra_epoch_loss[k].append(v.value)     # <------- here see SmoothedValue class (v is SmoothedValue object)
+                    self.intra_epoch_loss['progression'].append((((i+1)/(len(iterable))*100)))  # <----- and here
+                    print(
+                        log_msg.format(
+                            i,
+                            len(iterable),
+                            eta=eta_string,
+                            meters=str(self),
+                            time=str(iter_time),
+                            data=str(data_time),
+                            memory=torch.cuda.max_memory_allocated() / MB,
+                        )
+                    )
+                else:
+                    for k, v in self.meters.items():        # <------ insertion here
+                        self.intra_epoch_loss[k].append(v.value)     # <------- here
+                    self.intra_epoch_loss['progression'].append(((i+1)/(len(iterable))*100))  # <----- and here: could use add_meter in train_one_epoch to remove this line
+                    print(
+                        log_msg.format(
+                            i, len(iterable), eta=eta_string, meters=str(self), time=str(iter_time), data=str(data_time)
+                        )
+                    )
+            i += 1
+            end = time.time()
+        total_time = time.time() - start_time
+        total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+        print(f"{header} Total time: {total_time_str} ({total_time / len(iterable):.4f} s / it)")
+```
+
+I will pass these to a plot_training_loss() helper function.
+
+``` python
+def plot_training_loss(save_dir: str, epoch: int, **kwargs):
+    progression = [v for v in kwargs['progression']] # I'm not sure if list comprehension is neccessary here... perhaps just try progression = kwargs['progression']?
+    loss_objectness = [v for v in kwargs['loss_objectness']]
+    loss = [v for v in kwargs['loss']]
+    loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
+    loss_classifier = [v for v in kwargs['loss_classifier']]
+    lr = [v for v in kwargs['lr']] 
+
+
+    # the metrics are passed using list comprehension in train()
+    plt.figure(figsize=(10, 6))
+    plt.plot(progression, loss, label='Loss')
+    plt.plot(progression, loss_objectness, label='Loss Objectness')
+    plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
+    plt.plot(progression, loss_classifier, label='Loss Classifier')
+
+    plt.xlabel('Progression through Epoch')
+    plt.ylabel('Loss / Log10')
+    plt.yscale("log")
+    plt.title(f'Loss Metrics Progression Through Epoch {epoch}')
+    plt.legend()
+    plt.grid(False)
+    plt.savefig(f'{save_dir}/results/loss_metrics_epoch_{epoch}')
+    plt.show()
+```
+
+Now make a call to it in train() instead:
+
+``` python
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir, optimizer): 
+    model.train()
+    # Initialize lists to store metrics
+    train_losses = []
+    
+    # and a learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=3,
+        gamma=0.1
+    )
+
+    for epoch in range(num_epochs):
+    # train for one epoch, printing every iteration
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=1)
+        for k, v in metric_logger.intra_epoch_loss.items(): # <----- insertion here
+            print(f"\n Key: {k}\n Value: {v}") # <----- insertion here
+        # Plot loss throughout *this* epoch's training, save plot in results
+        plot_training_loss(save_dir, epoch, **{k: v for k, v in metric_logger.intra_epoch_loss.items()}) # <----- insertion here
+        
+    # Get the average loss for this epoch
+        epoch_loss = metric_logger.meters['loss'].global_avg
+        train_losses.append(epoch_loss)
+
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, (save_dir + 'checkpoints'))
+        
+        # Update the learning rate
+        lr_scheduler.step()
+
+    return num_epochs + precedent_epoch, train_losses
+```
+
+Now run the script make sure that plots are saved in results/ which is
+now in the root of the project:
+
+``` python
+model, optimizer, preprocess = get_model_instance_object_detection(2)
+
+dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
+        img_dir=str(img_dir), 
+        annotations_file=str(annotations_file),
+        transforms=preprocess, 
+        )
+
+# split the dataset in train and test set
+dataset_size = 2
+#validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
+indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
+
+#dataset_validation = torch.utils.data.Subset(dataset, indices[-validation_size:])
+dataset_train = torch.utils.data.Subset(dataset, indices[:])
+
+data_loader = torch.utils.data.DataLoader(
+    dataset_train,
+    batch_size=1,
+    shuffle=True,
+    collate_fn=utils.collate_fn
+)
+
+num_epochs = 2
+precedent_epoch = 0
+save_dir = '../'
+
+epoch, loss_metrics = train(model, data_loader, None, device, num_epochs, precedent_epoch, save_dir, optimizer)
+
+print("\n -end-")
+```
+
+    /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+      with torch.cuda.amp.autocast(enabled=scaler is not None):
+
+    Epoch: [0]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 12.4899 (12.4899)  loss_classifier: 0.5402 (0.5402)  loss_box_reg: 0.0011 (0.0011)  loss_objectness: 0.8216 (0.8216)  loss_rpn_box_reg: 11.1269 (11.1269)  time: 3.0914  data: 0.0097
+    Epoch: [0]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 12.2766 (12.3832)  loss_classifier: 0.5402 (0.5605)  loss_box_reg: 0.0001 (0.0006)  loss_objectness: 0.5051 (0.6634)  loss_rpn_box_reg: 11.1269 (11.1587)  time: 3.0939  data: 0.0100
+    Epoch: [0] Total time: 0:00:06 (3.0943 s / it)
+
+     Key: lr
+     Value: [0.005, 0.005]
+
+     Key: loss
+     Value: [12.489860534667969, 12.276588439941406]
+
+     Key: loss_classifier
+     Value: [0.5402147173881531, 0.580824613571167]
+
+     Key: loss_box_reg
+     Value: [0.001077381195500493, 0.0001002269855234772]
+
+     Key: loss_objectness
+     Value: [0.821620523929596, 0.5051356554031372]
+
+     Key: loss_rpn_box_reg
+     Value: [11.126947402954102, 11.19052791595459]
+
+     Key: progression
+     Value: [50.0, 100.0]
+
+![](0002_functional_Faster_R-CNN_files/figure-commonmark/cell-37-output-3.png)
+
+    Checkpoint saved: ../checkpoints/checkpoint_epoch_0.pth
+    Epoch: [1]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 11.8229 (11.8229)  loss_classifier: 0.4852 (0.4852)  loss_box_reg: 0.0008 (0.0008)  loss_objectness: 0.0353 (0.0353)  loss_rpn_box_reg: 11.3016 (11.3016)  time: 3.0963  data: 0.0081
+    Epoch: [1]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 11.4432 (11.6330)  loss_classifier: 0.3244 (0.4048)  loss_box_reg: 0.0008 (0.0008)  loss_objectness: 0.0353 (0.0630)  loss_rpn_box_reg: 11.0273 (11.1645)  time: 3.0925  data: 0.0081
+    Epoch: [1] Total time: 0:00:06 (3.0929 s / it)
+
+     Key: lr
+     Value: [0.005, 0.005]
+
+     Key: loss
+     Value: [11.822920799255371, 11.443161010742188]
+
+     Key: loss_classifier
+     Value: [0.48519137501716614, 0.3243866264820099]
+
+     Key: loss_box_reg
+     Value: [0.0008287893142551184, 0.0008365183603018522]
+
+     Key: loss_objectness
+     Value: [0.0352933332324028, 0.09060761332511902]
+
+     Key: loss_rpn_box_reg
+     Value: [11.301607131958008, 11.02733039855957]
+
+     Key: progression
+     Value: [50.0, 100.0]
+
+![](0002_functional_Faster_R-CNN_files/figure-commonmark/cell-37-output-5.png)
+
+    Checkpoint saved: ../checkpoints/checkpoint_epoch_1.pth
+
+     -end-
+
+That’s the ‘plot_training_loss’ sorted for plotting the training loss
+metrics within an epoch. Now I need to write a function to handle
+plotting losses accross numerous epochs. This will be called in the
+train() helper function, after the epoch training loop. ‘train_losses’
+stores the averaged losses at the end of each epoch of training.  
+
+First, I’ll define ‘plot_train_losses_across_epochs’:
+
+``` python
+def plot_train_losses_across_epochs(save_dir: str, precedent_epoch: int, epochs: int, **kwargs):
+    progression = [v for v in kwargs['progression']] # I'm not sure if list comprehension is neccessary here... perhaps just try progression = kwargs['progression']?
+    loss_objectness = [v for v in kwargs['loss_objectness']]
+    loss = [v for v in kwargs['loss']]
+    loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
+    loss_classifier = [v for v in kwargs['loss_classifier']]
+    lr = [v for v in kwargs['lr']] 
+    
+    # the metrics are passed using list comprehension in train()
+    plt.figure(figsize=(10, 6))
+    plt.plot(progression, loss, label='Loss')
+    plt.plot(progression, loss_objectness, label='Loss Objectness')
+    plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
+    plt.plot(progression, loss_classifier, label='Loss Classifier')
+
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss / Log10')
+    plt.yscale("log")
+    plt.title(f'Loss Metrics from Epoch {precedent_epoch}-{precedent_epoch + epochs}')
+    plt.legend()
+    plt.grid(False)
+    plt.savefig(f'{save_dir}/results/loss_metrics_epochs_{precedent_epoch}-{precedent_epoch + epochs}')
+    plt.show()
+```
+
+Next I will call the plot_train_losses_across_epochs() inside train(),
+and will also modify loss_metrics so that it is a dictionary.
+
+``` python
+def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir, optimizer): 
+    model.train()
+    # Initialize lists to store metrics
+    losses_across_epochs = defaultdict(list)
+    
+    # and a learning rate scheduler
+    lr_scheduler = torch.optim.lr_scheduler.StepLR(
+        optimizer,
+        step_size=3,
+        gamma=0.1
+    )
+
+    for epoch in range(num_epochs):
+    # train for one epoch, printing every iteration
+        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=1)
+        for k, v in metric_logger.intra_epoch_loss.items(): # <----- insertion here
+            print(f"\n Key: {k}\n Value: {v}") # <----- insertion here
+            # Get the average loss metrics at this epoch
+        for k, v in metric_logger.meters.items():
+            losses_across_epochs[k].append(v.value) # see SmoothedValude in utils.py for value as v is a SmoothedValue object
+        losses_across_epochs['progression'].append(((epoch+1)/num_epochs)*100)
+
+        # plot loss throughout *this* epoch's training, save plot in results
+        plot_training_loss(save_dir, epoch, **{k: v for k, v in metric_logger.intra_epoch_loss.items()})     # <----- insertion here
+
+        # Save checkpoint
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, (save_dir + 'checkpoints'))
+        
+        # Update the learning rate
+        lr_scheduler.step()
+
+    # plot average train losses across several epochs
+    plot_train_losses_across_epochs(save_dir, precedent_epoch, num_epochs, **{k: v for k, v in losses_across_epochs.items()})
+    return num_epochs + precedent_epoch
+```
+
+Now running this script to check that this works…
+
+``` python
+model, optimizer, preprocess = get_model_instance_object_detection(2)
+
+dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
+        img_dir=str(img_dir), 
+        annotations_file=str(annotations_file),
+        transforms=preprocess, 
+        )
+
+# split the dataset in train and test set
+dataset_size = 2
+#validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
+indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
+
+#dataset_validation = torch.utils.data.Subset(dataset, indices[-validation_size:])
+dataset_train = torch.utils.data.Subset(dataset, indices[:])
+
+data_loader = torch.utils.data.DataLoader(
+    dataset_train,
+    batch_size=1,
+    shuffle=True,
+    collate_fn=utils.collate_fn
+)
+
+num_epochs = 2
+precedent_epoch = 0
+save_dir = '../'
+
+epoch = train(model, data_loader, None, device, num_epochs, precedent_epoch, save_dir, optimizer)
+
+print("\n -end-")
+```
+
+    /var/folders/s7/0w8t9rc93wd8nhhx4ty_01_40000gq/T/ipykernel_59307/920378143.py:30: FutureWarning: `torch.cuda.amp.autocast(args...)` is deprecated. Please use `torch.amp.autocast('cuda', args...)` instead.
+      with torch.cuda.amp.autocast(enabled=scaler is not None):
+
+    Epoch: [0]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 12.6727 (12.6727)  loss_classifier: 0.7144 (0.7144)  loss_box_reg: 0.0036 (0.0036)  loss_objectness: 0.8277 (0.8277)  loss_rpn_box_reg: 11.1269 (11.1269)  time: 3.0891  data: 0.0083
+    Epoch: [0]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 12.4432 (12.5579)  loss_classifier: 0.7144 (0.7327)  loss_box_reg: 0.0023 (0.0030)  loss_objectness: 0.4992 (0.6635)  loss_rpn_box_reg: 11.1269 (11.1587)  time: 3.0938  data: 0.0084
+    Epoch: [0] Total time: 0:00:06 (3.0942 s / it)
+
+     Key: lr
+     Value: [0.005, 0.005]
+
+     Key: loss
+     Value: [12.672703742980957, 12.4431734085083]
+
+     Key: loss_classifier
+     Value: [0.7143836617469788, 0.7511008381843567]
+
+     Key: loss_box_reg
+     Value: [0.003625859972089529, 0.0023107368033379316]
+
+     Key: loss_objectness
+     Value: [0.8277464509010315, 0.4992375075817108]
+
+     Key: loss_rpn_box_reg
+     Value: [11.126947402954102, 11.190524101257324]
+
+     Key: progression
+     Value: [50.0, 100.0]
+
+![](0002_functional_Faster_R-CNN_files/figure-commonmark/cell-40-output-3.png)
+
+    Checkpoint saved: ../checkpoints/checkpoint_epoch_0.pth
+    Epoch: [1]  [0/2]  eta: 0:00:06  lr: 0.005000  loss: 11.7420 (11.7420)  loss_classifier: 0.5450 (0.5450)  loss_box_reg: 0.0017 (0.0017)  loss_objectness: 0.0303 (0.0303)  loss_rpn_box_reg: 11.1651 (11.1651)  time: 3.0559  data: 0.0080
+    Epoch: [1]  [1/2]  eta: 0:00:03  lr: 0.005000  loss: 11.6501 (11.6961)  loss_classifier: 0.4178 (0.4814)  loss_box_reg: 0.0016 (0.0016)  loss_objectness: 0.0303 (0.0526)  loss_rpn_box_reg: 11.1557 (11.1604)  time: 3.1400  data: 0.0081
+    Epoch: [1] Total time: 0:00:06 (3.1405 s / it)
+
+     Key: lr
+     Value: [0.005, 0.005]
+
+     Key: loss
+     Value: [11.741989135742188, 11.650129318237305]
+
+     Key: loss_classifier
+     Value: [0.5449751019477844, 0.4178207516670227]
+
+     Key: loss_box_reg
+     Value: [0.001688504940830171, 0.0016054677544161677]
+
+     Key: loss_objectness
+     Value: [0.03026553988456726, 0.07500243186950684]
+
+     Key: loss_rpn_box_reg
+     Value: [11.165060043334961, 11.15570068359375]
+
+     Key: progression
+     Value: [50.0, 100.0]
+
+![](0002_functional_Faster_R-CNN_files/figure-commonmark/cell-40-output-5.png)
+
+    Checkpoint saved: ../checkpoints/checkpoint_epoch_1.pth
+
+![](0002_functional_Faster_R-CNN_files/figure-commonmark/cell-40-output-7.png)
+
+
+     -end-
+
+Given the y-axis is logarithmic, and log10(0) is -infinity (NaN), and
+that matplotlib wants the x and y axis to be of equal length, I cannot
+start the plot x axis from 0%. Just something to keep in mind.  
+
+I think the intra-epoch loss metrics will be useful in evaluating batch
+to batch variability. Mainly I think it will help for short tests to
+gain insight into a model’s module dysfunction.  
+Training plot generation now works.
+
+Now for handling plotting of evaluation metrics…  
+
+### Considering appropriate visualisation of coco_eval metrics in plots:
+
+Based on earlier outputs from the evaluate() helper function, I know
+that CocoEvaluator from
+[coco_eval.py](../src/torchvision_deps/coco_eval.py) produces Average
+Precision and Recall (AP and AR, respectively) at several IOU
+thresholds. It is important that these data are visualised in a way that
+gives insight into the model’s performance prior to training on the
+cluster. I have included a brief discussion of Precision X Recall curves
+and their use in evaluating object detection networks’ performance on a
+per-sample basis. For now, the AP and AR from coco_eval are sufficient.
+The idea is to make a call to evaluate() in
+[helper_training_functions](../src/plate_detect/helper_training_functions.py)
+after each epoch of training. I will then store the AP and AR metrics at
+each IOU threshold in a dictionary. Once training is complete, I will
+make a call to plot_eval_metrics() again from
+[helper_training_functions](../src/plate_detect/helper_training_functions.py)
+to plot AP and AR metrics as for each epoch of training.  
+
+> [!NOTE]
+>
+> ### Precision X Recall curves
+>
+> An interesting discussion
+> [here](https://github.com/rafaelpadilla/Object-Detection-Metrics?tab=readme-ov-file#precision-x-recall-curve)
+> proposes the Precision x Recall curve which is implemented by the
+> [PASCAL VOC Challenge](http://host.robots.ox.ac.uk/pascal/VOC/).
+>
+> For clarity, I would like to define the following terms:  
+> - True Positive (TP): a correct detection, where IOU \>= threshold.  
+> - False Positive (FP): an incorrect detection, where IOU \<
+> threshold.  
+> - False Negative (FN): a ground truth is not detected.  
+> - True Negative (TN): *this isn’t used.* TN is any possible bounding
+> boxes that were correctly not detected in an image.  
+> - Precision: ability of a model to identify only the relevant objects.
+> This is given by TP/(TP + FP).  
+> - Recall: ability of a model to find all ground truth bounding boxes.
+> It is given by TP/(TP + FN).  
+>
+> The threshold is typically 50%, 75%, or 95%.
+>
+> **Precision x Recall Curve:**  
+> The Precision x Recall curve is based on the rationale that a good
+> object detector should only detect True Positives (0 FP = high
+> precision), and should be able to correctly identify all ground truth
+> objects (0 FN = high recall). On the other hand, a poor detector has
+> to increase the number of detected objects in order to identify all
+> ground truth objects. In this case, the detector compromises precision
+> to improve recall. This is illustrated in such a plot, where as the
+> recall of a detector increases, its precision decreases.  
+>
+> **Area Under the Curve (AUC) of Precision x Recall Curve:**  
+> AUC provides a quantitative descriptor for the Precision x Recall
+> curve to allow for comparisons.
+>
+> Currently, [coco_eval](../src/torchvision_deps/coco_eval.py) is
+> averaging the AP and AR for the whole validation set. As a reminder,
+> this is an output produced by a call to the evaluate() helper function
+> earlier:
+>
+> ``` {bash}
+> Test:  [ 0/50]  eta: 0:08:31  model_time: 10.2026 (10.2026)  evaluator_time: 0.0037 (0.0037)  time: 10.2212  data: 0.0148
+> Test:  [49/50]  eta: 0:00:10  model_time: 10.2246 (10.6478)  evaluator_time: 0.0047 (0.0055)  time: 10.4892  data: 0.0122
+> Test: Total time: 0:08:53 (10.6671 s / it)
+> Averaged stats: model_time: 10.2246 (10.6478)  evaluator_time: 0.0047 (0.0055)
+> Accumulating evaluation results...
+> DONE (t=0.07s).
+> IoU metric: bbox
+>  Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+>  Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.000
+>  Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.000
+>  Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+>  Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.000
+>  Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+>  Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.000
+>  Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.000
+>  Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.000
+>  Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = -1.000
+>  Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.000
+>  Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.000
+> [array([ 0.,  0.,  0., -1.,  0.,  0.,  0.,  0.,  0., -1.,  0.,  0.])] 
+> ```
+>
+> In order to create the plot, I would need to expose the metrics
+> calculated for each sample individually. These are generated by engine
+> and coco_eval, but are currently tucked away. Exposing metrics for
+> each sample would require inspection and modification of these files.
+> The [cocoapi github
+> repo](https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py)
+> is well commented.
+
+> [!NOTE]
+>
+> ### Adding image augmentation to helper functions…
+>
+> This is definitely something that needs to be implemented in the
+> future. Here are some brief launch-points I can use when I come back
+> to this. My priority is getting some training done for more than just
+> 1 epoch on the HPC, which in itself requires a locally defined Faster
+> R-CNN class.
+>
+> See
+> [here](https://pdf.sciencedirectassets.com/272206/1-s2.0-S0031320322X00149/1-s2.0-S0031320323000481/main.pdf?X-Amz-Security-Token=IQoJb3JpZ2luX2VjEMX%2F%2F%2F%2F%2F%2F%2F%2F%2F%2FwEaCXVzLWVhc3QtMSJIMEYCIQDHGwjyK8inLmJunlMGBkjPI%2B2RQhf29a3PpwUh%2FtcGtQIhAKXEABtOLty%2FeIaoLRArLOo1AG1g5sCAFuBCid9AF0jFKrMFCC4QBRoMMDU5MDAzNTQ2ODY1IgzGC8wcf0hM6U6%2BuigqkAXE2vBrPyLEzEszAdKmPGPE%2Fe2PuWiGsl4asY0mfwrTgBHcCJE%2B7mvDq8J8zDT1gLeiyrumMRHkpG17xRZHf3zGAu%2BV8ElbuBhsVuHZAb%2FnX4n5e7oLaKOO4YW2y4ETsCtwLroPKH4FcWxTretUzrlbhCAS%2BX5d861gT0Y6UTz1LEbIEgq4OWRRXSW5Yn%2Fq1DxzX8wOvw0pw6A%2F5MgVxcz67diPlmC7ph58goHCtHrkUJGqOTWKge%2B8ZCPPPkphqh3I9KbDfhGTKfhDaucbWl1J7eVZoJ0VX8ArJkjW3TGhkS73brzjdN7HR8wRRNBiVXqJhYPofxKyPqKASiRRj7MRIhOgzbkU5d0z4zxNt8Xliwc0bCymJ%2BPepBkjnyJ%2F5%2FCodwL8m5O6m3La5hrVAAjC9x7NIt%2Btecb176q%2BDRB3ELYwD8v0%2F0c8jTUmUeNZatzGPH3WTUaC%2Bo%2B4nKsrpAobYAYOQX8JmcmlT9RO6kTkhAVKsuSN54kl1K%2Fs977nu5B%2FrvePps7UFcN9T580vE%2B2oFa1uGwdbJr1IYZslqT3od3Gz0NmynC1sV%2FRgAYvjk6IBDG7W4FaDmmMYF8vOlD%2FBxZUuLMmw%2BcHlwJIROMn73F77fXo2K0IQMByrmiEg%2FK%2BvKLVLnCrRjpo%2FqnnFipG5FbBforeDYUmN9x6lN%2BH9S%2Bnho8kKXrwJscWXC9Lvs90E8ccWorPjPC52be0W7Y%2FxqEtfvutJ4hnvDT9ilwvpNbu%2BdHsbmwGsTiXzRjwNy4ZhCo7MLSITLM9VR9mVRci4ulnxV2QpXvSBvEYB1%2BF8VcFQIiTavC69L0sUs%2BFYZyZjExT2gW4%2Fc%2Bldptpmdz2V4WIH%2BHKjNX%2BaL0CGKRLejDyj8S4BjqwAe0oxq1p9jccRHXzaAZcTmiwV3fBbPgX4CN%2FuTG8kVpMikl6fAyT4tGm8FD3wT8sPtI2raxqEI0wYIZ33t0t4vYB0NQjFcWSjF%2FocTTGT%2FQITMsLBIP3YFOTJG8SLlRnUZ8sxKsoTfZcs37ToI%2BWZ%2FZtBoj%2Fc0iuU97k3KehPAGwKs8%2BBQRJpXDum8l3y6QN5zGp1tFxI99lg7Nu0RzMg0ZOiDbU0m3pW5rTiMbPZQdn&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20241017T140230Z&X-Amz-SignedHeaders=host&X-Amz-Expires=300&X-Amz-Credential=ASIAQ3PHCVTYS2ZZAFYX%2F20241017%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=b216340b0855727efb00bc68031e19f29813254ab964d60a1685e44e45714c89&hash=dd2c23826d13b059c59a8112432e10407ff621d79cac2d6790b0795c02f0f467&host=68042c943591013ac2b2430a89b270f6af2c76d8dfd086a07176afe7c76c2c61&pii=S0031320323000481&tid=spdf-95560c99-4f04-404c-86e1-a3a1717cba5c&sid=6f3a660355f9464580690b17c2898370a5bagxrqb&type=client&tsoh=d3d3LnNjaWVuY2VkaXJlY3QuY29t&ua=1d04570653560a560e5c52&rr=8d40d3a30a2c63f3&cc=gb)
+> for a comprehensive overview of image augmentation techniques for deep
+> learning.
+>
+> There they achieved an accuracy improvement of around 1.5% using
+> [mixup](https://arxiv.org/pdf/1710.09412), which uses ‘convex
+> combinations of pairs of examples and their labels’ to improve
+> generalisation of network architectures.
+
+### Next step: Setup singularity container on the cluster and [train for 10 epochs for baseline performance assessment, using evaluation plot to guide revisions…](04_ResNet50_training.md)

@@ -577,10 +577,6 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
         # Save checkpoint
         save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
         
-        
-        # Plot and save the metrics
-        plot_eval_metrics(train_losses, epoch + precedent_epoch)
-        
         # Update the learning rate
         lr_scheduler.step()
 
@@ -776,55 +772,6 @@ def plot_prediction(model, dataset, device, index, save_dir: str):
 - Loads a specific image from the dataset and runs it through the model to get predictions.\
 - Superimposes the predicted bounding boxes on the original image (as a red outlined bounding box) and visualises the result. \
 
-#### Plot evaluation metrics:
-```{python}
-def plot_eval_metrics(eval_metrics, epoch):
-    plt.figure(figsize=(15, 10))
-    
-   # # Plot training loss
-   # plt.subplot(2, 2, 1)
-   # plt.plot(train_losses, label='Train Loss')
-   # plt.title('Training Loss over epochs')
-   # plt.xlabel('Epoch')
-   # plt.ylabel('Loss')
-   # plt.legend()
-    
-    # Plot mAP@[0.5:0.95]
-    plt.subplot(2, 2, 2)
-    map_values = [metrics[0] for metrics in eval_metrics]
-    plt.plot(map_values, label='mAP@[0.5:0.95]')
-    plt.title('mAP@[0.5:0.95] over epochs')
-    plt.xlabel('Epoch')
-    plt.ylabel('mAP')
-    plt.legend()
-    
-    # Plot mAP@0.5
-    plt.subplot(2, 2, 3)
-    map50_values = [metrics[1] for metrics in eval_metrics]
-    plt.plot(map50_values, label='mAP@0.5')
-    plt.title('mAP@0.5 over epochs')
-    plt.xlabel('Epoch')
-    plt.ylabel('mAP')
-    plt.legend()
-    
-    # Plot mAR@[0.5:0.95]
-    plt.subplot(2, 2, 4)
-    mar_values = [metrics[8] for metrics in eval_metrics]
-    plt.plot(mar_values, label='mAR@[0.5:0.95]')
-    plt.title('mAR@[0.5:0.95] over epochs')
-    plt.xlabel('Epoch')
-    plt.ylabel('mAR')
-    plt.legend()
-    
-    plt.tight_layout()
-    plt.savefig(f'training_metrics_epoch_{epoch}.png')
-    plt.close()
-
-```
-**Breakdown:** \
-- This function visualizes the evaluation metrics (mean Average Precision (mAP) and mean Average Recall (mAR)) over epochs. \
-- The results are plotted for easy comparison, helping to analyze the training process and the model's learning behavior over time. \
-
 ## Debugging 'helper_training_functions' by Implementation in a Script:
 
 Having written the code necessary to instantiate, train, and evaluate a ResNet50 model, I need to evaluate its performance over several epochs. This will help to validate the code functions as intended, and to guide future development. \
@@ -909,12 +856,12 @@ dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
         )
 
 # split the dataset in train and test set
-dataset_size = 2 # normally would be len(dataset), but for debugging purposes this is sufficient
-validation_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
+dataset_size = 20  #normally would be len(dataset), but for debugging purposes this is sufficient
+validation_size = 5   # Again, this would normally be higher, for example: min(50, int(dataset_size // 5))  {20% of data for testing, or 50 samples, whichever is smaller}
 indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
 
 dataset_validation = torch.utils.data.Subset(dataset, indices[-validation_size:])
-dataset_train = torch.utils.data.Subset(dataset, indices[:-validation_size])
+dataset_train = torch.utils.data.Subset(dataset, indices[:])
 ```
 **Breakdown:** \
 - Plate_Image_Dataset is a custom dataset class used to handle parsing the csv file for bounding box vertices, associating them with the correct image using a dictionary, and handling retrieval of this information. \
@@ -941,9 +888,8 @@ data_loader_test = torch.utils.data.DataLoader(
 - In this case, the Image_Plate_Dataset class is a map-style dataset, as it implements __getitem__() and __len__(), and stores samples with their associated labels and metadata at a shared index. \
 - If shuffle == True, data is reshuffled at every epoch. \
 
-#### Calling train, evaluate, and plot helper functions...
+#### Calling train and evaluate_model...
 ```{python}
-#| error: true
 save_dir = 'results'
 num_epochs = 1
 precedent_epoch = 0
@@ -951,9 +897,6 @@ precedent_epoch = 0
 epoch, loss_metrics = train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
 
 eval_metrics = evaluate_model(model, data_loader_test,device)
-
-plot_eval_metrics(eval_metrics, epoch)
-
 
 print("\n -end-")
 
@@ -969,14 +912,9 @@ print("\n -end-")
         - Mean Average Precision (mAP) \
         - Mean Average Recall (mAR) \
         - Performance metrics across IoU thresholds \
-    3. Visualisation plot includes: \
-        - Training loss curves (currently commented out...) \
-        - Precision and recall metrics \
 - *Note* I have only set it to train for 1 epoch here just to show the output. I will train for longer on the cluster. Here, my focus is debugging the helper functions, not training the model. \
 
-### Debugging 'plot_eval_metrics' and implementing 'plot_training_loss':
-
-Execution of the previous block of code produced an error pertaining to the plt_eval_metrics function in 'helper_training_functions'. 
+### Loading a model and implementing 'plot_training_loss':
 
 Training seemed to complete 'successfully' (without any overt error message), as shown by the standard output:
 #| code-fold: true
@@ -1212,49 +1150,14 @@ loss_objectness: 0.0006 (0.0217)  loss_rpn_box_reg: 1.3427 (2.9346)  time:
 13.3004  data: 0.0221
 Epoch: [0] Total time: 3:47:38 (30.6933 s / it)
 ```
-\
-Standard error is as follows:
-```{bash}
-TypeError                                 Traceback (most recent call last)
-Cell In[5], line 5
-      2 num_epochs = 1
-      3 precedent_epoch = 0
-----> 5 epoch, loss_metrics = helper_training_functions.train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
-      7 eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test,device)
-      9 helper_training_functions.plot_eval_metrics(eval_metrics, epoch)
-
-File ~/Documents/My_Repos/SC_TSL_15092024_plate_detect/src/plate_detect/helper_training_functions.py:90, in train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
-     86 save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
-     89 # Plot and save the metrics
----> 90 plot_eval_metrics(train_losses, epoch + precedent_epoch)
-     92 # Update the learning rate
-     93 lr_scheduler.step()
-
-File ~/Documents/My_Repos/SC_TSL_15092024_plate_detect/src/plate_detect/helper_training_functions.py:186, in plot_eval_metrics(eval_metrics, epoch)
-    176 # # Plot training loss
-    177 # plt.subplot(2, 2, 1)
-    178 # plt.plot(train_losses, label='Train Loss')
-   (...)
-    183  
-    184  # Plot mAP@[0.5:0.95]
-    185  plt.subplot(2, 2, 2)
---> 186  map_values = [metrics[0] for metrics in eval_metrics]
-    187  plt.plot(map_values, label='mAP@[0.5:0.95]')
-    188  plt.title('mAP@[0.5:0.95] over epochs')
-
-TypeError: 'float' object is not subscriptable
-```
-
-Firstly, I will type- and shape-check the eval_metrics list. I will load the model from the .pth file saved from training for the sake of efficiency (no need to train again, as it did not produce the error and would unneccessarily waste time). 'load_model()' expects the save directory string of the .pth file, the number of classes (2: background, plate), and the model file name. It returns the model, optimizer, and epoch. I then pass the model to evaluate_model(). \
+Next, I want to try and load the model from the .pth file saved in the previous code block. The'load_model()' function expects the save directory string of the .pth file, the number of classes (2: background, plate), and the model file name. It returns the model, optimizer, and epoch. I then pass the model to evaluate_model(). I will also type- and shape-check the eval_metrics list returned from evaluate_model for clarity when later creating a function to plot these metrics.\
 
 ```{python}
-model, optimizer, epoch = load_model('checkpoints/', 2, 'checkpoint_epoch_0')
+model, optimizer, epoch = load_model('../checkpoints/', 2, 'checkpoint_epoch_0')
 
 eval_metrics = evaluate_model(model, data_loader_test, device)
 
 print(eval_metrics, '\n', shape(eval_metrics))
-
-#helper_training_functions.plot_eval_metrics(eval_metrics, epoch)
 
 print("\n -end-")
 ```
@@ -1296,7 +1199,7 @@ RuntimeError: Error(s) in loading state_dict for FasterRCNN:
 \tUnexpected key(s) in state_dict: \"state\", \"param_groups\". "
 }
 ```
-This error is relates to handling loading of the serialised optimiser object by the save function. While unneccessary for correcting the error with eval_metrics, now that is has popped up I will deal with it, as this function must correctly load the optimizer in instances where I want to recommence training from a saved checkpoint. \
+This error is relates to handling loading of the serialised optimiser object by the save function. This function must correctly load the optimizer in instances where I want to recommence training from a saved checkpoint. \
 
 I modififed the load_model function according to [this](https://pytorch.org/tutorials/recipes/recipes/saving_and_loading_a_general_checkpoint.html) article. \
 
@@ -1349,9 +1252,6 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
         # Save checkpoint
         save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
         
-        # Plot and save the metrics
-        plot_eval_metrics(train_losses, epoch + precedent_epoch)
-        
         # Update the learning rate
         lr_scheduler.step()
 
@@ -1370,13 +1270,11 @@ def load_model(save_dir: str, num_classes: int, model_file_name: str):
 ```
 After the above modifications, I ran the following script:
 ```{python}
-model, optimizer, epoch = load_model('checkpoints/', num_class, 'checkpoint_epoch_0')
+model, optimizer, epoch = load_model('../checkpoints/', num_class, 'checkpoint_epoch_0')
 
 eval_metrics = evaluate_model(model, data_loader_test, device)
 
 print(eval_metrics, '\n', len(eval_metrics))
-
-#helper_training_functions.plot_eval_metrics(eval_metrics, epoch)
 
 print("\n -end-")
 ```
@@ -1417,7 +1315,7 @@ IoU metric: bbox
 
  -end-
  ```
-This output is interesting. Firstly, the loss metrics are missing from eval_metrics, yet are output at the end of the previous section. This is because the evaluate_model() function is using [coco_eval](../src/torchvision_deps/coco_eval.py), returning coco_evaluator's 'bbox' stats. The training loss metrics are generated by [engine's](../src/torchvision_deps/engine.py) 'train_one_epoch'. This means to handle plotting of evaluation and training metrics, I will need to modify coco_eval, engine and/or utils in some way. Firstly, to clarify why the call to plot_eval_metrics is raising a type-error, I  will print coco_evaluator as well as the eval_metrics returned from the call to evaluate_model:
+This output is interesting. Firstly, the loss metrics are missing from eval_metrics, yet are output at the end of the previous section. This is because the two are handled separately! The evaluate_model() function is using [coco_eval](../src/torchvision_deps/coco_eval.py), returning coco_evaluator's 'bbox' stats. The training loss metrics are generated by [engine's](../src/torchvision_deps/engine.py) 'train_one_epoch'. This means to handle plotting of evaluation and training metrics, I will need to modify coco_eval, engine and/or utils in some way. Firstly, to clarify why the call to plot_eval_metrics is raising a type-error, I  will print coco_evaluator as well as the eval_metrics returned from the call to evaluate_model:
 ```{python}
 def evaluate_model(model, data_loader_test,device):
     val_metrics = []
@@ -1439,9 +1337,8 @@ print(eval_metrics, '\n', len(eval_metrics))
 The CocoEvaluator class is defined in [torchvision_deps](../src/torchvision_deps/coco_eval.py). \
 - Based on the print(eval_metrics) in the former code block, the array indexing in plot_eval_metrics needs to be adjusted. 'eval_metrics' is a one-dimensional array of floats, where each index is one of the 12 metrics outlined [here](https://cocodataset.org/#detection-eval). Currently, I'm treating it like a dict. \
 
-I have realised numerous changes are yet to be implemented: \
-- When defining plot_eval_metrics(), I drafted the code to plot the training loss metrics, but forgot I wanted to separate this into its own function. Currently train() makes a call to plot_eval_metrics. Instead I will define a plot_train_loss_metrics() function and make a call to that inside train() instead. \
-- Currently, I'm trying to plot the average loss and eval metrics. While this would be okay if I were training for many epochs, that won't work when trying to create a line plot for one epoch's training. Instead, I want to plot the metrics as the training or evaluation happens. Currently I am using train_one_epoch() and evaluate() from [engine](../src/torchvision_deps/engine.py) in torchvision_deps. They use PyTorch's [MetricLogger](https://pytorch.org/tnt/stable/utils/generated/torchtnt.utils.loggers.MetricLogger.html) to store metrics, where 'log_every()' method from MetricLogger is handling the print frequency of metrics as training/evaluation progresses through the epoch. I want to plot the data that is currently printed by log_every(). This will require modification to either log_every or the metric loggers in engine's train_one_epoch. This discussion is helpful: https://discuss.pytorch.org/t/object-detection-fine-tuning-interpreting-printout-of-train-one-epoch/193496/2 \
+
+- Currently, I'm trying to plot the average loss. While this would be okay if I were training for many epochs, that won't work when trying to create a line plot for one epoch's training. Instead, I want to plot the metrics as the training or evaluation happens. Currently I am using train_one_epoch() and evaluate() from [engine](../src/torchvision_deps/engine.py) in torchvision_deps. They use PyTorch's [MetricLogger](https://pytorch.org/tnt/stable/utils/generated/torchtnt.utils.loggers.MetricLogger.html) to store metrics, where 'log_every()' method from MetricLogger is handling the print frequency of metrics as training/evaluation progresses through the epoch. I want to plot the data that is currently printed by log_every(). This will require modification to either log_every or the metric loggers in engine's train_one_epoch. This discussion is helpful: https://discuss.pytorch.org/t/object-detection-fine-tuning-interpreting-printout-of-train-one-epoch/193496/2 \
 
 I realised the MetricLogger class is defined locally in [utils.py](../src/torchvision_deps/T_and_utils/utils.py). 'log_every()' is a method of MetricLogger. I want to avoid modifying dependency files as much as possible. \
 
@@ -1472,10 +1369,7 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
         train_losses.append(epoch_loss)
 
         # Save checkpoint
-        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
-        
-        # Plot and save the metrics
-        plot_eval_metrics(train_losses, epoch + precedent_epoch)
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, (save_dir + 'checkpoints'))
         
         # Update the learning rate
         lr_scheduler.step()
@@ -1509,7 +1403,7 @@ data_loader = torch.utils.data.DataLoader(
 
 num_epochs = 1
 precedent_epoch = 0
-save_dir = 'results'
+save_dir = '../'
 
 epoch, loss_metrics = train(model, data_loader, None, device, num_epochs, precedent_epoch, save_dir, optimizer)
 
@@ -1677,9 +1571,8 @@ def train(model, data_loader, data_loader_test, device, num_epochs, precedent_ep
         epoch_loss = metric_logger.meters['loss'].global_avg
         train_losses.append(epoch_loss)
 
-        save_dir += 'checkpoints'
         # Save checkpoint
-        save_checkpoint(model, optimizer, epoch + precedent_epoch, save_dir)
+        save_checkpoint(model, optimizer, epoch + precedent_epoch, (save_dir + 'checkpoints'))
         
         # Update the learning rate
         lr_scheduler.step()
@@ -1832,7 +1725,7 @@ Training plot generation now works.
 Now for handling plotting of evaluation metrics... \
 
 ### Considering appropriate visualisation of coco_eval metrics in plots:
-Based on earlier outputs from the evaluate() helper function, I know that coco evaluator produces Average Precision and Recall (AP and AR, respectively) at several IOU thresholds. It is important that these data are visualised in a way that gives insight into the model's performance prior to training on the cluster. I have included a brief discussion of Precision X Recall curves and their use in evaluating object detection networks' performance on a per-sample basis. For now, the AP and AR from coco_eval are sufficient. The idea is to make a call to evaluate() in [helper_training_functions](../src/plate_detect/helper_training_functions.py) after each epoch of training. I will then store the AP and AR metrics at each IOU threshold in a dictionary. Once training is complete, I will make a call to plot_eval_metrics() again from [helper_training_functions](../src/plate_detect/helper_training_functions.py) to plot AP and AR metrics as for each epoch of training. \
+Based on earlier outputs from the evaluate() helper function, I know that CocoEvaluator from [coco_eval.py](../src/torchvision_deps/coco_eval.py) produces Average Precision and Recall (AP and AR, respectively) at several IOU thresholds. It is important that these data are visualised in a way that gives insight into the model's performance prior to training on the cluster. I have included a brief discussion of Precision X Recall curves and their use in evaluating object detection networks' performance on a per-sample basis. For now, the AP and AR from coco_eval are sufficient. The idea is to make a call to evaluate() in [helper_training_functions](../src/plate_detect/helper_training_functions.py) after each epoch of training. I will then store the AP and AR metrics at each IOU threshold in a dictionary. Once training is complete, I will make a call to plot_eval_metrics() again from [helper_training_functions](../src/plate_detect/helper_training_functions.py) to plot AP and AR metrics as for each epoch of training. \
 
 ::: {.callout-note collapse="true"}
 #### Precision X Recall curves 
