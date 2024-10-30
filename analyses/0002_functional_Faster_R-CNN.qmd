@@ -1728,7 +1728,34 @@ print("\n -end-")
 
 Firstly, loss (blue) shouldn't be identical to loss for the Region Proposal Network box regression (green). Loss should be equal to the total loss over the period trained. This will require correction. \
 
-Also, when plotting the loss metrics across several epochs, the x=axis scale units should be epoch count, not percentage progression through training. \
+Also, when plotting the loss metrics across several epochs, the x=axis scale units should be epoch count, not percentage progression through training This can be fixed simply by the following modification: \
+
+```{python}
+def plot_train_losses_across_epochs(save_dir: str, precedent_epoch: int, epochs: int, **kwargs):
+    loss_objectness = [v for v in kwargs['loss_objectness']]
+    loss = [v for v in kwargs['loss']]
+    loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
+    loss_classifier = [v for v in kwargs['loss_classifier']]
+    lr = [v for v in kwargs['lr']] 
+
+    training_range =  [i for i in range(precedent_epoch, precedent_epoch + epochs)]  # list of epochs as ints
+    
+    # the metrics are passed using list comprehension in train()
+    plt.figure(figsize=(10, 6))
+    plt.plot(training_range, loss, label='Loss')
+    plt.plot(training_range, loss_objectness, label='Loss Objectness')
+    plt.plot(training_range, loss_rpn_box_reg, label='Loss RPN Box Reg')
+    plt.plot(training_range, loss_classifier, label='Loss Classifier')
+
+    plt.xlabel('Epoch Count')
+    plt.ylabel('Loss / Log10')
+    plt.yscale("log")
+    plt.title(f'Loss Metrics from Epoch {precedent_epoch}-{precedent_epoch + epochs}')
+    plt.legend()
+    plt.grid(False)
+    plt.savefig(f'{save_dir}/results/loss_metrics_epochs_{precedent_epoch}-{precedent_epoch + epochs}')
+    plt.show()
+```
 
 **Loss Objectness:** \
 Loss objectness (orange) initially decreases before ascending slightly and plateauing. Loss objectness evaluates the objectness score produced by the RPN relative to ground truth. Specifically: \
@@ -1749,12 +1776,12 @@ There they achieved an accuracy improvement of around 1.5% using [mixup](https:/
 Further inspection of loss objectness within an epoch's training shows extreme volatility:
 ![loss objectness epoch 13](../results/loss_metrics_epoch_13.png) \
 **One possible avenue to explore...** \
-This variance could be indicative of image samples that are somehow distinct from the rest of the images in the dataset, hence feature maps produced by the backbone are distinct, where the discrepency between a typical sample feature map and a distinct sample's feature map is too great for the network to recognise the latter as a plate (or equally, the network could be failing to recognise the latter as background but I think this is less likely). In this case, it should be possible to identify these images and remove them if necessary by changing the x-axis units to the sample index and modifying the training script so that indices are not permutated prior to creation of the training dataset (initialising the training and validation subsets using array index slicing). \
+This variance could be indicative of image samples that are somehow distinct from the rest of the images in the dataset, hence feature maps produced by the backbone are distinct, where the discrepency between a typical sample feature map and a distinct sample's feature map is too great for the network to recognise the latter as a plate (or equally, the network could be failing to recognise the latter as background, but I think this would be less likely). In this case, it should be possible to identify these images and remove them if necessary by changing the x-axis units to the sample index and modifying the training script so that indices are not permutated prior to creation of the training dataset (initialising the training and validation subsets using array index slicing). \
 
 **The more probable issue...** \
-The default weights loaded for this model are trained on ImageNet images, which comprises almost exclusively objects that exhibit '[Lambertian reflectance](https://en.wikipedia.org/wiki/Lambertian_reflectance)' (i.e., typical objects with consistent surface appearance regardless of the its positional relationship to an observer). \
+The default weights loaded for this model are trained on ImageNet images, which comprises almost exclusively objects that exhibit '[Lambertian reflectance](https://en.wikipedia.org/wiki/Lambertian_reflectance)' (i.e., typical matte objects with consistent surface appearance regardless of the its positional relationship to an observer due to diffuse surface reflectivity). \
 
-In the case of microbe growth plates, which are reflective and transparent 'non-Lambertian' objects,
+In the case of microbe growth plates, which are reflective and transparent 'non-Lambertian' objects, the network parameters are primed to extract features of objects with Lambertian surfaces. As a consequence, the backbone's output feature maps may activate more strongly for Lambertian objects - in other words, it most likely struggles to 'see' and characterise plates in image samples, but rather other objects present like the wireframe rack, or the incubator surface itself.
 
 
 

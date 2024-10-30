@@ -83,24 +83,25 @@ def plot_training_loss(save_dir: str, epoch: int, **kwargs):
     plt.show()
 
 def plot_train_losses_across_epochs(save_dir: str, precedent_epoch: int, epochs: int, **kwargs):
-    progression = [v for v in kwargs['progression']] # I'm not sure if list comprehension is neccessary here... perhaps just try progression = kwargs['progression']?
     loss_objectness = [v for v in kwargs['loss_objectness']]
     loss = [v for v in kwargs['loss']]
     loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
     loss_classifier = [v for v in kwargs['loss_classifier']]
     lr = [v for v in kwargs['lr']] 
+
+    training_range =  [i for i in range(precedent_epoch, precedent_epoch + epochs)]  # list of epochs as ints
     
     # the metrics are passed using list comprehension in train()
     plt.figure(figsize=(10, 6))
-    plt.plot(progression, loss, label='Loss')
-    plt.plot(progression, loss_objectness, label='Loss Objectness')
-    plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
-    plt.plot(progression, loss_classifier, label='Loss Classifier')
+    plt.plot(training_range, loss, label='Loss')
+    plt.plot(training_range, loss_objectness, label='Loss Objectness')
+    plt.plot(training_range, loss_rpn_box_reg, label='Loss RPN Box Reg')
+    plt.plot(training_range, loss_classifier, label='Loss Classifier')
 
-    plt.xlabel('Epochs')
+    plt.xlabel('Epoch Count')
     plt.ylabel('Loss / Log10')
     plt.yscale("log")
-    plt.title(f'Loss Metrics from epoch {precedent_epoch}-{precedent_epoch + epochs} / %')
+    plt.title(f'Loss Metrics from Epoch {precedent_epoch}-{precedent_epoch + epochs}')
     plt.legend()
     plt.grid(False)
     plt.savefig(f'{save_dir}/results/loss_metrics_epochs_{precedent_epoch}-{precedent_epoch + epochs}')
