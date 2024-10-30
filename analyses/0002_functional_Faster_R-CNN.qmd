@@ -1717,6 +1717,25 @@ epoch = train(model, data_loader, data_loader_test, device, num_epochs, preceden
 print("\n -end-")
 ```
 
+## Inspecting Results after 15 Epochs of Training:
+- Firstly, it is clear that evaluation is not functioning correctly (see below). The issue could lie in numerous places, but the best place to start looking I think is engine's evaluate function, or indeed coco_eval. **Fixing this is a current priority**, as evaluation metrics will be fundamental in the comparison of models in future analyses. \
+![evaluation metrics epochs 0-15](../results/evaluation_metrics_epochs_0-15.png) \
+
+- The loss metrics are more promising in that they actually change throughout training. With this said, it is clear the network is struggling to learn to identify plates. \
+
+### Loss Metrics Epoch 0-15:
+![Loss Metrics Epoch 0-15](../results/evaluation_metrics_epochs_0-15.png) \
+
+Firstly, loss (blue) shouldn't be identical to loss for the Region Proposal Network box regression (green). Loss should be equal to the total loss over the period trained. This will require correction. \
+
+Also, when plotting the loss metrics across several epochs, the x=axis scale units should be epoch count, not percentage progression through training. \
+
+**Loss Objectness:** \
+Loss objectness (orange) initially decreases before ascending slightly and plateauing. Loss objectness evaluates the objectness score produced by the RPN relative to ground truth. Specifically: \
+- Objectness score: the probability that an object exists in a given ROI proposed by the RPN. This is a continuous logit (unnormalised probability) passed through a sigmoid function (output between 0 and 1).  \
+- Loss objectness: in this model it describes the performance of rpn.head.cls_logits which is a [2D convolutional layer](https://pytorch.org/docs/stable/generated/torch.nn.Conv2d.html) of dimensions 256x3, kernel size 1.  This is relative to the ground truth, which is 1 if a given anchor box overlaps a bounding box label (the ground truth) at some IoU threshold (0.50 for example), and is 0 otherwise. The [binary cross entropy loss](https://www.youtube.com/watch?v=Pwgpl9mKars) function is used to quantitatively describe the degree to which the probability is concordant with the ground truth binary value, where loss approaches infinity as these variables diverge, and approaches 0 as they converge (i.e., as they 'agree').  \
+
+Hence, the loss objectness initially decreasing across epochs of training is good, but its later resurgence could be indicative of overfitting. This may be due to the dataset being too small. This could be addressed either through more imaging and labeling (time costly), or by image augmentation (this has not yet been implemented). \
 
 ::: {.callout-note collapse="true"}
 ## Adding image augmentation to helper functions...
@@ -1726,5 +1745,17 @@ See [here](https://pdf.sciencedirectassets.com/272206/1-s2.0-S0031320322X00149/1
 
 There they achieved an accuracy improvement of around 1.5% using [mixup](https://arxiv.org/pdf/1710.09412), which uses 'convex combinations of pairs of examples and their labels' to improve generalisation of network architectures.
 :::
+
+Further inspection of loss objectness within an epoch's training shows extreme volatility:
+![loss objectness epoch 13](../results/loss_metrics_epoch_13.png) \
+**One possible avenue to explore...** \
+This variance could be indicative of image samples that are somehow distinct from the rest of the images in the dataset, hence feature maps produced by the backbone are distinct, where the discrepency between a typical sample feature map and a distinct sample's feature map is too great for the network to recognise the latter as a plate (or equally, the network could be failing to recognise the latter as background but I think this is less likely). In this case, it should be possible to identify these images and remove them if necessary by changing the x-axis units to the sample index and modifying the training script so that indices are not permutated prior to creation of the training dataset (initialising the training and validation subsets using array index slicing). \
+
+**The more probable issue...** \
+The default weights loaded for this model are trained on ImageNet images, which comprises almost exclusively objects that exhibit '[Lambertian reflectance](https://en.wikipedia.org/wiki/Lambertian_reflectance)' (i.e., typical objects with consistent surface appearance regardless of the its positional relationship to an observer). \
+
+In the case of microbe growth plates, which are reflective and transparent 'non-Lambertian' objects,
+
+
 
 ### Next step: Setup singularity container on the cluster and [train for 10 epochs for baseline performance assessment, using evaluation plot to guide revisions...](04_ResNet50_training.md)
