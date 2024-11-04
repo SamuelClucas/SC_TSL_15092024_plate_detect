@@ -2527,10 +2527,7 @@ save_dir = '../'
 
 epoch = train(model, train_loader, validation_loader, device, num_epochs, precedent_epoch, save_dir, optimizer)
 ```
-These results will be stored in results/analysis_0002_02_15epochs.
-
-
-
+These results will be stored in results/analysis_0002_15epochs.
 
 ```{python}
 save_dir = '/Users/cla24mas/Documents/SC_TSL_15092024_plate_detect/checkpoints/'
@@ -2596,9 +2593,12 @@ def plot_prediction(model, dataset, device, index, save_dir: str, model_name):
 ```
 
 ```{python}
-model, _, _ = load_model(save_dir, 2, 'checkpoint_epoch_9')
+save_dir = '/Users/cla24mas/Documents/SC_TSL_15092024_plate_detect/results/0002_predictions/'
+load_dir = '/Users/cla24mas/Documents/SC_TSL_15092024_plate_detect/checkpoints/'
+model, _, _ = load_model(load_dir, 2, 'checkpoint_epoch_9')
 model.eval()  # Set model to evaluation mode
-plot_prediction(model, dataset_validation, device, 15, save_dir, 'checkpoint_epoch_9')
+for i in range(0, validation_size):
+    plot_prediction(model, dataset_validation, device, i, save_dir, 'checkpoint_epoch_9')
 ```
 
 
@@ -2606,13 +2606,3 @@ plot_prediction(model, dataset_validation, device, 15, save_dir, 'checkpoint_epo
 
 
 
-
-
-
-
-To address this I need to modify both my model instance getter function and the plate image dataset class itself. \
-
-Firstly, I will use PyTorch's [Compose class](https://pytorch.org/vision/main/generated/torchvision.transforms.Compose.html) to define the transforms to be applied to img:
-
-
-### Next step: Setup singularity container on the cluster and [train for 10 epochs for baseline performance assessment, using evaluation plot to guide revisions...](04_ResNet50_training.md)
