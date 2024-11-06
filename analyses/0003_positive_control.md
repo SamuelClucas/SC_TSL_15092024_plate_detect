@@ -1,4 +1,4 @@
-# Implementing a Po
+# Implementing a Positive Control
 
 6/11/24
 
@@ -164,7 +164,7 @@ Jijón-Palma and António, 2021)
 Amisse, Jijón-Palma and António, 2021)  
 
 ![mAP and
-mAR](results/0003_pos_control/training_02_10_epochs/evaluation_metrics_epochs_0-9.png)  
+mAR](results/0003_pos_control/evaluation_metrics_epochs_0-9.png)  
 
 These metrics fall well within the expected range established by the
 literature benchmarks, validating that my implementation is functioning

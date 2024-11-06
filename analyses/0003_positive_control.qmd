@@ -1,5 +1,5 @@
 ---
-title: "Implementing a Po"
+title: "Implementing a Positive Control"
 date: 06-11-2024
 date-format: short
 execute:
@@ -99,7 +99,7 @@ My implementation achieved: \
 - AP @ IoU 0.50:0.95 = 87% (8% > Mask R-CNN in Caisse Amisse, Jijón-Palma and António, 2021) \
 - AR @ IoU 0.50:0.95 = 92% (equivalent to Mask R-CNN AR in Caisse Amisse, Jijón-Palma and António, 2021) \
 
-![mAP and mAR](results/0003_pos_control/training_02_10_epochs/evaluation_metrics_epochs_0-9.png) \
+![mAP and mAR](results/0003_pos_control/evaluation_metrics_epochs_0-9.png) \
 
 These metrics fall well within the expected range established by the literature benchmarks, validating that my implementation is functioning correctly. The higher discrepancy in AP could be attributed to the additional mask-predictor head in the reference study.
 
