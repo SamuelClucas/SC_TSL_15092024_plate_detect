@@ -176,7 +176,7 @@ additional mask-predictor head in the reference study.
 The positive control demonstrates that my Faster R-CNN implementation:  
 1. Achieves performance consistent with published benchmarks  
 2. Shows no evidence of implementation errors or dysfunction  
-3. Can be confidently applied to new detection tasks  
+3. Can be confidently applied to new detection tasks
 
 ‌- Caisse Amisse, Jijón-Palma, M.E. and António, J. (2021). PEDESTRIAN
 SEGMENTATION FROM COMPLEX BACKGROUND BASED ON PREDEFINED POSE FIELDS AND
