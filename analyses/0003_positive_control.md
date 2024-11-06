@@ -1,4 +1,4 @@
-# Implementing a Functional Faster R-CNN Model
+# Implementing a Po
 
 6/11/24
 
@@ -11,7 +11,7 @@ benchmarks from the literature using an identical task and dataset. A
 significant discrepancy would indicate potential model dysfunction. The
 challenge is finding a paper to which I can compare my model.  
 
-I did find this paper:[‘Pedestrian Segmentation from Complex Background
+I did find this paper: [‘Pedestrian Segmentation from Complex Background
 Based on Predefined Pose Fields and Probabilistic
 Relaxation’](https://www.scielo.br/j/bcg/a/s4LPJYBbNVDQ4ZcWprP4rKw/?lang=en).
 The paper compares an image segmentation method to CNN-based methods.
@@ -90,11 +90,11 @@ on the Penn-Fudan dataset.
 ## Reference Selection 
 
 The paper “Pedestrian Segmentation from Complex Background Based on
-Predefined Pose Fields and Probabilistic Relaxation” (Amisse et al.,
-2021) provides suitable benchmark metrics for comparison. They evaluate
-multiple CNN-based architectures on the Penn-Fudan dataset, which
-contains 170 images of pedestrians in urban environments with
-pixel-level annotations (masks and bounding boxes).
+Predefined Pose Fields and Probabilistic Relaxation” (Caisse Amisse,
+Jijón-Palma and António, 2021) provides suitable benchmark metrics for
+comparison. They evaluate multiple CNN-based architectures on the
+Penn-Fudan dataset, which contains 170 images of pedestrians in urban
+environments with pixel-level annotations (masks and bounding boxes).
 
 ## Architectural Comparison
 
@@ -163,7 +163,8 @@ Jijón-Palma and António, 2021)
 - AR @ IoU 0.50:0.95 = 92% (equivalent to Mask R-CNN AR in Caisse
 Amisse, Jijón-Palma and António, 2021)  
 
-!(results/0003_pos_control/training_02_10_epochs/evaluation_metrics_epochs_0-9.png)  
+![mAP and
+mAR](results/0003_pos_control/training_02_10_epochs/evaluation_metrics_epochs_0-9.png)  
 
 These metrics fall well within the expected range established by the
 literature benchmarks, validating that my implementation is functioning
@@ -180,9 +181,9 @@ The positive control demonstrates that my Faster R-CNN implementation:
 ‌- Caisse Amisse, Jijón-Palma, M.E. and António, J. (2021). PEDESTRIAN
 SEGMENTATION FROM COMPLEX BACKGROUND BASED ON PREDEFINED POSE FIELDS AND
 PROBABILISTIC RELAXATION. Boletim de Ciências Geodésicas, \[online\]
-27(3). doi:https://doi.org/10.1590/s1982-21702021000300017.  
-- Tahir, H., Shahbaz Khan, M. and Owais Tariq, M. (2021). Performance
-Analysis and Comparison of Faster R-CNN, Mask R-CNN and ResNet50 for the
-Detection and Counting of Vehicles. 2021 International Conference on
-Computing, Communication, and Intelligent Systems (ICCCIS).
+27(3). doi:https://doi.org/10.1590/s1982-21702021000300017. - Tahir, H.,
+Shahbaz Khan, M. and Owais Tariq, M. (2021). Performance Analysis and
+Comparison of Faster R-CNN, Mask R-CNN and ResNet50 for the Detection
+and Counting of Vehicles. 2021 International Conference on Computing,
+Communication, and Intelligent Systems (ICCCIS).
 doi:https://doi.org/10.1109/icccis51004.2021.9397079.
