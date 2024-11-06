@@ -181,9 +181,9 @@ The positive control demonstrates that my Faster R-CNN implementation:
 ‌- Caisse Amisse, Jijón-Palma, M.E. and António, J. (2021). PEDESTRIAN
 SEGMENTATION FROM COMPLEX BACKGROUND BASED ON PREDEFINED POSE FIELDS AND
 PROBABILISTIC RELAXATION. Boletim de Ciências Geodésicas, \[online\]
-27(3). doi:https://doi.org/10.1590/s1982-21702021000300017. - Tahir, H.,
-Shahbaz Khan, M. and Owais Tariq, M. (2021). Performance Analysis and
-Comparison of Faster R-CNN, Mask R-CNN and ResNet50 for the Detection
-and Counting of Vehicles. 2021 International Conference on Computing,
-Communication, and Intelligent Systems (ICCCIS).
+27(3). doi:https://doi.org/10.1590/s1982-21702021000300017.  
+- Tahir, H., Shahbaz Khan, M. and Owais Tariq, M. (2021). Performance
+Analysis and Comparison of Faster R-CNN, Mask R-CNN and ResNet50 for the
+Detection and Counting of Vehicles. 2021 International Conference on
+Computing, Communication, and Intelligent Systems (ICCCIS).
 doi:https://doi.org/10.1109/icccis51004.2021.9397079.
