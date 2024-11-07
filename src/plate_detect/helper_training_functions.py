@@ -55,7 +55,7 @@ def get_model_instance_object_detection(num_class: int):
     return model, optimizer, transforms
 
 def save_checkpoint(model, optimizer, epoch, root_dir):
-    save_path = os.path.join = (root_dir, 'checkpoints')
+    save_path = os.path.join(root_dir, 'checkpoints')
     if not os.path.exists(save_path):
         os.makedirs(save_path)
     
@@ -78,7 +78,6 @@ def plot_training_loss(root_dir: str, epoch: int, **kwargs):
     loss_classifier = [v for v in kwargs['loss_classifier']]
     lr = [v for v in kwargs['lr']] 
 
-
     # the metrics are passed using list comprehension in train()
     plt.figure(figsize=(10, 6))
     plt.plot(progression, loss, label='Loss')
@@ -86,7 +85,7 @@ def plot_training_loss(root_dir: str, epoch: int, **kwargs):
     plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
     plt.plot(progression, loss_classifier, label='Loss Classifier')
 
-    plt.xlabel('Progression through Epoch')
+    plt.xlabel('Progression through Epoch / %')
     plt.ylabel('Loss / Log10')
     plt.yscale("log")
     plt.title(f'Loss Metrics Progression Through Epoch {epoch}')
@@ -272,8 +271,7 @@ def plot_prediction(model, dataset, device, index, root_dir: str, model_name):
 
     return output_image
 
-
-def plot_eval_metrics(root_dir, precedent_epoch, num_epochs, **kwargs):
+def plot_eval_metrics(root_dir, precedent_epoch, num_epochs, title=None, **kwargs):
     progression = [k for k in kwargs] # should be equivalent to num_epochs - precedent_epoch
 
     # store metrics of interest in lists
@@ -286,8 +284,11 @@ def plot_eval_metrics(root_dir, precedent_epoch, num_epochs, **kwargs):
 
     plt.xlabel('Epochs')
     plt.ylabel('Value')
-  
-    plt.title(f'Evaluation Metrics from Epoch {precedent_epoch}-{precedent_epoch + num_epochs}')
+    
+    if title == None:
+        plt.title(f'Evaluation Metrics from Epoch {precedent_epoch}-{precedent_epoch + num_epochs}')
+    else:
+        plt.title(title) # lets you plot just one epoch's training metrics
     plt.legend()
     plt.grid(False)
     plt.savefig(f'{root_dir}/results/evaluation_metrics_epochs_{precedent_epoch}-{precedent_epoch + num_epochs}')

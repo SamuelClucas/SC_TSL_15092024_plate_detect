@@ -201,9 +201,10 @@ def get_model_instance_object_detection(num_class: int) -> fasterrcnn_resnet50_f
 
 #### Save epoch, model and optimizer state_dict in checkpoint dict:
 ```{python}
-def save_checkpoint(model, optimizer, epoch, save_dir):
-    if not os.path.exists(save_dir):
-        os.makedirs(save_dir)
+def save_checkpoint(model, optimizer, epoch, root_dir):
+    save_path = os.path.join(root_dir, 'checkpoints')
+    if not os.path.exists(save_path):
+        os.makedirs(save_path)
     
     checkpoint = {
         'epoch': epoch,
@@ -212,7 +213,7 @@ def save_checkpoint(model, optimizer, epoch, save_dir):
     }
     
     filename = f'checkpoint_epoch_{epoch}.pth'
-    save_path = os.path.join(save_dir, filename)
+    save_path = os.path.join(save_path, filename)
     torch.save(checkpoint, save_path)
     print(f"Checkpoint saved: {save_path}")
 ```
@@ -722,7 +723,7 @@ def get_feature_maps(model, input_image, target_layer_name: torch.nn):
 
 #### Plot feature maps:
 ```{python}
-def visualize_feature_maps(feature_maps, num_features=64):
+def visualise_feature_maps(feature_maps, num_features=64):
     for layer, feature_map in feature_maps.items():
         # Get the first image in the batch
         feature_map = feature_map[0]
@@ -1254,14 +1255,13 @@ class MetricLogger:
 I will pass these to a plot_training_loss() helper function.
 
 ```{python}
-def plot_training_loss(save_dir: str, epoch: int, **kwargs):
+def plot_training_loss(root_dir: str, epoch: int, **kwargs):
     progression = [v for v in kwargs['progression']] # I'm not sure if list comprehension is neccessary here... perhaps just try progression = kwargs['progression']?
     loss_objectness = [v for v in kwargs['loss_objectness']]
     loss = [v for v in kwargs['loss']]
     loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
     loss_classifier = [v for v in kwargs['loss_classifier']]
     lr = [v for v in kwargs['lr']] 
-
 
     # the metrics are passed using list comprehension in train()
     plt.figure(figsize=(10, 6))
@@ -1270,15 +1270,14 @@ def plot_training_loss(save_dir: str, epoch: int, **kwargs):
     plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
     plt.plot(progression, loss_classifier, label='Loss Classifier')
 
-    plt.xlabel('Progression through Epoch')
+    plt.xlabel('Progression through Epoch / %')
     plt.ylabel('Loss / Log10')
     plt.yscale("log")
     plt.title(f'Loss Metrics Progression Through Epoch {epoch}')
     plt.legend()
     plt.grid(False)
-    plt.savefig(f'{save_dir}/results/loss_metrics_epoch_{epoch}')
+    plt.savefig(f'{root_dir}/results/loss_metrics_epoch_{epoch}')
     plt.show()
-    
 ```
 
 Now make a call to it in train() instead:
@@ -2040,10 +2039,9 @@ print(f"Target boxes: {targets[0]['boxes']}")
 
 ```
 
-
 Even after trying to address the collate function issue, the cause of the bounding box issue is even further upstream. This narrows it down to the TV Tensor.
 
-Let's look into it!
+Let's look into it! Firstly, I will keep both the bounding boxes and image tensors as pure tensors instead of wrapping them as TVTensor.
 
 ```{python}
 class Plate_Image_Dataset(torch.utils.data.Dataset):
@@ -2072,7 +2070,7 @@ class Plate_Image_Dataset(torch.utils.data.Dataset):
         boxes = torch.tensor([[x1[0], y1[0], x2[0], y2[0]]], dtype=torch.float32)
         print("Boxes after tensor creation:", boxes)
 
-        # Keep image as regular tensor initially
+        # Keep image as regular tensor initially, instead of wrapping in TVTensor
         target = {
             "boxes": boxes,  # Regular tensor, not TVTensor
             "labels": torch.ones((1,), dtype=torch.int64),
@@ -2088,6 +2086,8 @@ class Plate_Image_Dataset(torch.utils.data.Dataset):
             
         return img, target
 ```
+
+I also want to simplify the custom collate function:
 ```{python}
 def custom_collate_fn(batch):
     images = []
@@ -2248,7 +2248,7 @@ print("Image shape:", batch[0][0].shape)
 print("Batch boxes:", batch[1][0]["boxes"])
 ```
 
-This works! Quickly adding proper transforms.
+This works! Quickly adding transforms within the model getter to handle normalisation of pixel intensities (according to [ImageNet normalisation](https://discuss.pytorch.org/t/discussion-why-normalise-according-to-imagenet-mean-and-std-dev-for-transfer-learning/115670)).
 
 ```{python}
 def get_model_instance_object_detection(num_class: int):
@@ -2532,10 +2532,9 @@ These results will be stored in results/analysis_0002_15epochs.
 ```{python}
 save_dir = '/Users/cla24mas/Documents/SC_TSL_15092024_plate_detect/checkpoints/'
 plot_prediction(model, dataset, device, 3, save_dir, 'checkpoint_epoch_9')
-
-
 ```
-This gave 'tuple' object is not callable error.
+
+This produced a 'tuple object is not callable error'.
 
 ```{python}
 def plot_prediction(model, dataset, device, index, save_dir: str, model_name):
@@ -2543,7 +2542,7 @@ def plot_prediction(model, dataset, device, index, save_dir: str, model_name):
     img, target = dataset[index]
     
     with torch.no_grad():
-        image = img[:3, ...].to(device)
+        image = img[:3, ...].to(device) # take the first 3 elements/channels (RGB) - leave the rest as the same (the '...')
         predictions = model([image])
         pred = predictions[0]
     
@@ -2601,8 +2600,15 @@ for i in range(0, validation_size):
     plot_prediction(model, dataset_validation, device, i, save_dir, 'checkpoint_epoch_9')
 ```
 
+Evaluation Metrics:
 
+![evaluation metrics](../results/0002_15_epochs/02_fix/evaluation_metrics_epochs_0-15.png)
 
+Example prediction:
+
+![example prediction](../results/0002_15_epochs/02_fix/holdout_predictions/prediction_normalized_24.png)
+
+To validate these results, see [analysis 0003](0003_positive_control.md)
 
 
 
