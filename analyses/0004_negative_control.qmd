@@ -8,6 +8,25 @@ execute:
 ## Introduction
 To complement the positive control from [analysis 0003](0003_positive_control.md), I will use the same model I trained in [analysis 0002](0002_functional_Faster_R-CNN.md) on the [plate image dataset](../raw/positives/) and evaluate it on the [Pennfudan dataset](../raw/pos_control/). The expectation is that it performs poorly, given pedestrians and plates are sufficiently distinct that a model trained to detect incubator plates should classify them as background. This would doubly confirm the model and its associated code is behaving as expected.
 
+### Goal: 
+
+Further validate the functionality of my model and associated code by implementation of a negative control.
+
+### Hypothesis: 
+
+My model - trained on the plate image dataset - should perform very poorly when evaluated on the Penn Fudan dataset.
+
+### Rationale:
+
+1. The plate image dataset model has not been trained on the Penn Fudan, hence should not be able to classify pedestrians in images.
+2. The two datasets are very different. One contains lambertian objects of interest, the other contains transparent, non-lambertian objects of interest. Pedestrians and microbe plates are essentially completely disparate in their visual presentation.
+3. A poor performance indicates that the model is specific to its dataset, indicating it is looking for the plates as it should.
+
+### Experimental Plan: 
+
+1. Load the model trained on the plate image dataset.
+2. Evaluate its performance using COCO metrics.
+
 ## Implementation
 
 ### Imports
@@ -23,15 +42,71 @@ import torch
 from torchvision.transforms.v2 import functional as F
 from torchvision import tv_tensors
 from typing import Dict
+from collections import defaultdict
 import torchvision_deps.T_and_utils
 ```
 
 ```{python}
-root_dir = '/Users/cla24mas/Documents/SC_TSL_15092024_plate_detect/'
-model, _, _ = helper_training_functions.load_model(root_dir, 2, 'checkpoint_epoch_9')
+root_dir = '/Users/cla24mas/Documents/SC_TSL_15092024_plate_detect'
+model, _, _ = helper_training_functions.load_model(root_dir, 2, '0002_02_15_epochs_fix/checkpoint_epoch_9')
 model.eval()  # Set model to evaluation mode
-for i in range(0, validation_size):
-    plot_prediction(model, dataset_test, device, i, root_dir, 'checkpoint_epoch_9')
+```
+
+Defining the Penn Fudan dataset class as in the [intermediate object detection PyTorch tutorial](https://pytorch.org/tutorials/intermediate/torchvision_tutorial.html):
+```{python}
+class PennFudanDataset(torch.utils.data.Dataset):
+    def __init__(self, root, transforms): # I like their use of root, this was something I should have done!
+        self.root = root
+        self.transforms = transforms
+        # load all image files
+        self.imgs = list(sorted(os.listdir(os.path.join(root, "PNGImages")))) # also, note here they sort the otherwise arbitrary os.listdir return - this was a huge flaw I overlooked in my code!
+        self.masks = list(sorted(os.listdir(os.path.join(root, "PedMasks"))))
+
+    def __getitem__(self, idx):
+        # load images and masks
+        img_path = os.path.join(self.root, "PNGImages", self.imgs[idx])
+        mask_path = os.path.join(self.root, "PedMasks", self.masks[idx])
+        img = read_image(img_path)
+        mask = read_image(mask_path)
+        # instances are encoded as different colors
+        obj_ids = torch.unique(mask)
+        # first id is the background, so remove it
+        obj_ids = obj_ids[1:]
+        num_objs = len(obj_ids)
+
+        # split the color-encoded mask into a set
+        # of binary masks
+        masks = (mask == obj_ids[:, None, None]).to(dtype=torch.uint8)
+
+        # get bounding box coordinates for each mask
+        boxes = masks_to_boxes(masks)
+
+        # there is only one class
+        labels = torch.ones((num_objs,), dtype=torch.int64)
+
+        image_id = idx
+        area = (boxes[:, 3] - boxes[:, 1]) * (boxes[:, 2] - boxes[:, 0])
+        # suppose all instances are not crowd
+        iscrowd = torch.zeros((num_objs,), dtype=torch.int64)
+
+        # Wrap sample and targets into torchvision tv_tensors:
+        img = tv_tensors.Image(img)
+
+        target = {}
+        target["boxes"] = tv_tensors.BoundingBoxes(boxes, format="XYXY", canvas_size=F.get_size(img))
+        #target["masks"] = tv_tensors.Mask(masks) <--- commented out since my model doen't care about masks
+        target["labels"] = labels
+        target["image_id"] = image_id
+        target["area"] = area
+        target["iscrowd"] = iscrowd
+
+        if self.transforms is not None:
+            img, target = self.transforms(img, target)
+
+        return img, target
+
+    def __len__(self):
+        return len(self.imgs)
 ```
 
 Taking the evaluation code out of helper_training_functions.train() to generate evaluation metrics, again evaluating its performance on 50 samples, but fromthe PennFudan dataset instead:
@@ -57,10 +132,13 @@ data_loader_test = torch.utils.data.DataLoader(
 epoch=10
 evaluation_across_epochs = defaultdict(list)
 
-eval_metrics = evaluate_model(model, data_loader_test, device)
+eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test, device)
 evaluation_across_epochs[f'{epoch}'] = eval_metrics
 
-plot_eval_metrics(save_dir, precedent_epoch, num_epochs, title="Evaluation Metrics at Epoch 10", **{k: v for k, v in evaluation_across_epochs.items()}) # remember models are 0-indexed, so checkpoint_epoch_9 corresponds to the 10th epoch of training
+helper_training_functions.plot_eval_metrics(root_dir, 0, 10, title="Evaluation Metrics at Epoch 10", **{k: v for k, v in evaluation_across_epochs.items()}) # remember models are 0-indexed, so checkpoint_epoch_9 corresponds to the 10th epoch of training
+
+for i in range(0, len(dataset_test)):
+    helper_training_functions.plot_prediction(model, dataset_test, device, i, root_dir, 'checkpoint_epoch_9')
 ```
 
 As you can see in both the stdout from CocoEvaluator, as well as the plot itself, the model performed extremely poorly as expected (almost completely imprecise and unable to find the ground-truth bounding boxes at IoU thresholds >=0.50):
