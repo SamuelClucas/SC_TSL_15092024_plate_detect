@@ -1,3 +1,13 @@
+"""
+Helper functions for training and evaluating object detection models.
+
+This module provides utilities for setting up, training, and evaluating
+Faster R-CNN models for plate detection. It includes functions for model
+initialization, checkpoint management, visualization, and evaluation.
+
+Author: Original by Samuel Clucas, Documentation enhanced
+Last Modified: November 2024
+"""
 import os
 import re
 from glob import glob
@@ -8,29 +18,48 @@ import torch
 from torchvision.transforms.v2 import functional as F
 from torchvision import tv_tensors
 import matplotlib.pyplot as plt
-from typing import Dict
 from pathlib import Path
-from typing import Dict, Union
-from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2, FastRCNNPredictor, FasterRCNN_ResNet50_FPN_V2_Weights
+from torchvision.models.detection.faster_rcnn import (
+    fasterrcnn_resnet50_fpn_v2,
+    FastRCNNPredictor,
+    FasterRCNN_ResNet50_FPN_V2_Weights
+)
 import PIL
 from torchvision.utils import draw_bounding_boxes
 import torchvision
 import torch.nn as nn
-from torch.utils.tensorboard import SummaryWriter
 import matplotlib.pyplot as plt
 from torchvision.transforms import v2 as T
 from collections import defaultdict
 from  torchvision_deps.engine import train_one_epoch, evaluate # used by evaluate_model()
 from torchvision_deps.T_and_utils import utils
-from typing import Dict, Any, Optional
+from typing import Tuple, Dict, Any, Optional, List, Type
+from torch.utils.data import DataLoader
 
-def get_model_instance_object_detection(num_class: int):
-    # New weights with accuracy 80.858%
+
+def get_model_instance_object_detection(
+    num_class: int
+) -> Tuple[nn.Module, torch.optim.Optimizer, T.Compose]:
+    """
+    Initialize a Faster R-CNN model with custom classification head.
+    
+    Args:
+        num_class: Number of classes to detect (including background)
+        
+    Returns:
+        Tuple containing:
+        - Initialized model
+        - SGD optimizer
+        - Preprocessing transforms
+        
+    Note:
+        Uses ResNet50 FPN V2 backbone with pretrained weights
+    """
+    # Initialize model with pretrained weights
     weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT 
     model = fasterrcnn_resnet50_fpn_v2(weights=weights, box_score_thresh=0.5)
     
-    # Don't use the default preprocess from weights
-    # Instead, use our custom transforms we just tested
+    # Define custom preprocessing transforms
     transforms = T.Compose([
         T.ConvertImageDtype(torch.float32),
         T.Normalize(
@@ -39,12 +68,11 @@ def get_model_instance_object_detection(num_class: int):
         )
     ])
     
-    # get num of input features for classifier
+    # Replace classification head for custom number of classes
     in_features = model.roi_heads.box_predictor.cls_score.in_features
-
-    # replace the pre-trained head with a new one
     model.roi_heads.box_predictor = FastRCNNPredictor(in_features, num_class)
 
+    # Configure optimizer
     params = [p for p in model.parameters() if p.requires_grad]
     optimizer = torch.optim.SGD(
         params,
@@ -55,88 +83,24 @@ def get_model_instance_object_detection(num_class: int):
 
     return model, optimizer, transforms
 
-def save_checkpoint(model, optimizer, epoch, root_dir):
-    save_path = os.path.join(root_dir, 'checkpoints')
-    if not os.path.exists(save_path):
-        os.makedirs(save_path)
-    
-    checkpoint = {
-        'epoch': epoch,
-        'model_state_dict': model.state_dict(),
-        'optimizer_state_dict': optimizer.state_dict(),
-    }
-    
-    filename = f'checkpoint_epoch_{epoch}.pth'
-    save_path = os.path.join(save_path, filename)
-    torch.save(checkpoint, save_path)
-    print(f"Checkpoint saved: {save_path}")
-
-def plot_training_loss(root_dir: str, epoch: int, **kwargs):
-    progression = [v for v in kwargs['progression']] # I'm not sure if list comprehension is neccessary here... perhaps just try progression = kwargs['progression']?
-    loss_objectness = [v for v in kwargs['loss_objectness']]
-    loss = [v for v in kwargs['loss']]
-    loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
-    loss_classifier = [v for v in kwargs['loss_classifier']]
-    lr = [v for v in kwargs['lr']] 
-
-    # the metrics are passed using list comprehension in train()
-    plt.figure(figsize=(10, 6))
-    plt.plot(progression, loss, label='Loss')
-    plt.plot(progression, loss_objectness, label='Loss Objectness')
-    plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
-    plt.plot(progression, loss_classifier, label='Loss Classifier')
-
-    plt.xlabel('Progression through Epoch / %')
-    plt.ylabel('Loss / Log10')
-    plt.yscale("log")
-    plt.title(f'Loss Metrics Progression Through Epoch {epoch}')
-    plt.legend()
-    plt.grid(False)
-    plt.savefig(f'{root_dir}/results/loss_metrics_epoch_{epoch}')
-    plt.show()
-
-def plot_losses_across_epochs(root_dir: str, precedent_epoch: int, epochs: int, **kwargs):
-    progression = [v for v in kwargs['progression']] # I'm not sure if list comprehension is neccessary here... perhaps just try progression = kwargs['progression']?
-    loss_objectness = [v for v in kwargs['loss_objectness']]
-    loss = [v for v in kwargs['loss']]
-    loss_rpn_box_reg = [v for v in kwargs['loss_rpn_box_reg']]
-    loss_classifier = [v for v in kwargs['loss_classifier']]
-    lr = [v for v in kwargs['lr']] 
-    
-    # the metrics are passed using list comprehension in train()
-    plt.figure(figsize=(10, 6))
-    plt.plot(progression, loss, label='Loss')
-    plt.plot(progression, loss_objectness, label='Loss Objectness')
-    plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
-    plt.plot(progression, loss_classifier, label='Loss Classifier')
-
-    plt.xlabel('Epochs')
-    plt.ylabel('Loss / Log10')
-    plt.yscale("log")
-    plt.title(f'Loss Metrics from Epoch {precedent_epoch}-{precedent_epoch + epochs}')
-    plt.legend()
-    plt.grid(False)
-    plt.savefig(f'{root_dir}/results/loss_metrics_epochs_{precedent_epoch}-{precedent_epoch + epochs}')
-    plt.show()
-
 def train(
-    model: torch.nn.Module,
-    train_loader: torch.utils.data.DataLoader, 
-    validation_loader: torch.utils.data.DataLoader,
+    model: nn.Module,
+    train_loader: DataLoader,
+    validation_loader: DataLoader,
     device: torch.device,
     num_epochs: int = 15,
     precedent_epoch: int = 0,
     root_dir: str = '../',
     optimizer: Optional[torch.optim.Optimizer] = None,
-    **kwargs
+    **kwargs: Any
 ) -> int:
     """
     Train an object detection model.
     
     Args:
-        model: The model to train
-        data_loader: Training data loader
-        data_loader_test: Validation/test data loader
+        model: Model to train
+        train_loader: DataLoader for training data
+        validation_loader: DataLoader for validation data
         device: Device to train on (CPU/GPU)
         num_epochs: Number of epochs to train (default: 15)
         precedent_epoch: Starting epoch number (default: 0)
@@ -149,6 +113,13 @@ def train(
     
     Returns:
         int: Final epoch number
+        
+    This function handles the complete training loop including:
+    - Training for specified number of epochs
+    - Logging and plotting loss metrics
+    - Saving model checkpoints
+    - Evaluating model performance
+    - Learning rate scheduling
     """
     model.train()
     
@@ -156,7 +127,7 @@ def train(
     losses_across_epochs = defaultdict(list)
     evaluation_across_epochs = defaultdict(list)
     
-    # Set up learning rate scheduler with configurable parameters
+    # Setup learning rate scheduler
     lr_scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer,
         step_size=kwargs.get('lr_step_size', 3),
@@ -164,46 +135,46 @@ def train(
     )
 
     for epoch in range(num_epochs):
-        # Train for one epoch with configurable print frequency
+        # Train one epoch
         metric_logger = train_one_epoch(
             model, 
             optimizer, 
-            train_loader , 
+            train_loader,
             device, 
             epoch, 
             print_freq=kwargs.get('print_freq', 1)
         )
         
-        # Log intra-epoch metrics
+        # Log metrics
         for k, v in metric_logger.intra_epoch_loss.items():
             print(f"\n Key: {k}\n Value: {v}")
-            
-        # Store average loss metrics
+        
+        # Store average metrics
         for k, v in metric_logger.meters.items():
             losses_across_epochs[k].append(v.value)
         losses_across_epochs['progression'].append(((epoch+1)/num_epochs)*100)
 
-        # Plot training loss
+        # Plot training progress
         plot_training_loss(
             root_dir, 
             epoch, 
             **{k: v for k, v in metric_logger.intra_epoch_loss.items()}
         )
 
-        # Save model checkpoint
+        # Save checkpoint
         save_checkpoint(model, optimizer, epoch + precedent_epoch, root_dir)
 
-        # Evaluate model on test set
+        # Evaluate model
         eval_metrics = evaluate_model(model, validation_loader, device)
         evaluation_across_epochs[f'{epoch}'] = eval_metrics
 
         # Update learning rate
         lr_scheduler.step()
 
-    # Print evaluation metrics
+    # Print final evaluation
     {print(k, '\n', v) for k, v in evaluation_across_epochs.items()}
 
-    # Plot metrics across epochs
+    # Plot final metrics
     plot_losses_across_epochs(
         root_dir, 
         precedent_epoch, 
@@ -219,24 +190,95 @@ def train(
     
     return num_epochs + precedent_epoch
 
+def save_checkpoint(
+    model: nn.Module,
+    optimizer: torch.optim.Optimizer,
+    epoch: int,
+    root_dir: str
+) -> None:
+    """
+    Save model and optimizer state to a checkpoint file.
+    
+    Args:
+        model: Model to save
+        optimizer: Optimizer to save
+        epoch: Current epoch number
+        root_dir: Directory to save checkpoint
+        
+    Creates a 'checkpoints' directory if it doesn't exist and saves the
+    checkpoint with epoch number in filename.
+    """
+    save_path = os.path.join(root_dir, 'checkpoints')
+    os.makedirs(save_path, exist_ok=True)
+    
+    checkpoint = {
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'optimizer_state_dict': optimizer.state_dict(),
+    }
+    
+    filename = f'checkpoint_epoch_{epoch}.pth'
+    save_path = os.path.join(save_path, filename)
+    torch.save(checkpoint, save_path)
+    print(f"Checkpoint saved: {save_path}")
 
-def load_model(root_dir: str, num_classes: int, model_file_name: str):
-    model, optimizer, preprocess = get_model_instance_object_detection(num_classes)
-    checkpoint = torch.load(f'{root_dir}/checkpoints/{model_file_name}.pth', weights_only=True)
+
+def load_model(
+    root_dir: str,
+    num_classes: int,
+    model_file_name: str
+) -> Tuple[nn.Module, torch.optim.Optimizer, int]:
+    """
+    Load a model from a checkpoint file.
+    
+    Args:
+        root_dir: Directory containing checkpoints
+        num_classes: Number of classes in model
+        model_file_name: Name of checkpoint file (without .pth extension)
+        
+    Returns:
+        Tuple containing:
+        - Loaded model
+        - Loaded optimizer
+        - Epoch number from checkpoint
+        
+    Raises:
+        FileNotFoundError: If checkpoint file doesn't exist
+    """
+    model, optimizer, _ = get_model_instance_object_detection(num_classes)
+    checkpoint_path = f'{root_dir}/checkpoints/{model_file_name}.pth'
+    
+    if not os.path.exists(checkpoint_path):
+        raise FileNotFoundError(f"Checkpoint not found: {checkpoint_path}")
+        
+    checkpoint = torch.load(checkpoint_path, weights_only=True)
     model.load_state_dict(checkpoint['model_state_dict'])
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
     epoch = checkpoint['epoch']
+    
     return model, optimizer, epoch
 
-def evaluate_model(model, validation_loader,device):
-    model.eval()
 
+def evaluate_model(
+    model: nn.Module,
+    validation_loader: DataLoader,
+    device: torch.device
+) -> np.ndarray:
+    
+    """
+    Evaluate model performance using COCO metrics.
+    
+    Args:
+        model: Model to evaluate
+        validation_loader: DataLoader for validation data
+        device: Device to run evaluation on
+        
+    Returns:
+        numpy array containing COCO evaluation metrics
+    """
+    model.eval()
     coco_evaluator = evaluate(model, validation_loader, device=device)
-    print(coco_evaluator)
-    # Extract evaluation metrics
-    eval_metrics = coco_evaluator.coco_eval['bbox'].stats
-  
-    return eval_metrics
+    return coco_evaluator.coco_eval['bbox'].stats
 
 
 def get_feature_maps(model, input_image, target_layer_name: torch.nn):
@@ -257,38 +299,82 @@ def get_feature_maps(model, input_image, target_layer_name: torch.nn):
     
     return feature_maps
 
-def visualise_feature_maps(feature_maps, num_features=64):
-    for layer, feature_map in feature_maps.items():
-        # Get the first image in the batch
-        feature_map = feature_map[0]
-        
-        # Plot up to num_features feature maps
-        num_features = min(feature_map.size(0), num_features)
-        
-        fig, axs = plt.subplots(8, 8, figsize=(20, 20))
-        fig.suptitle(f'Feature Maps for Layer: {layer}')
-        
-        for i in range(num_features):
-            ax = axs[i // 8, i % 8]
-            ax.imshow(feature_map[i].cpu(), cmap='gray')
-            ax.axis('off')
-        
-        plt.tight_layout()
-        plt.show()
+"""
+Visualization functions for training progress and model predictions.
 
-def plot_prediction(model, dataset, device, index, root_dir: str, model_name):
-    # Get image and target from dataset
-    img, target = dataset[index]
+This module provides functions for plotting training losses, evaluation metrics,
+feature maps, and model predictions on images.
+"""
+
+def plot_training_loss(root_dir: str, epoch: int, **kwargs: Dict[str, List[float]]) -> None:
+    """
+    Plot training losses during a single epoch.
     
+    Args:
+        root_dir: Directory to save plot
+        epoch: Current epoch number
+        **kwargs: Dictionary containing loss metrics including:
+            - progression: Percentage through epoch
+            - loss_objectness: Objectness loss values
+            - loss: Total loss values
+            - loss_rpn_box_reg: RPN box regression loss
+            - loss_classifier: Classification loss
+            - lr: Learning rates
+    """
+    # Extract metrics from kwargs
+    progression = kwargs['progression']
+    loss_objectness = kwargs['loss_objectness']
+    loss = kwargs['loss']
+    loss_rpn_box_reg = kwargs['loss_rpn_box_reg']
+    loss_classifier = kwargs['loss_classifier']
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(progression, loss, label='Loss')
+    plt.plot(progression, loss_objectness, label='Loss Objectness')
+    plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
+    plt.plot(progression, loss_classifier, label='Loss Classifier')
+
+    plt.xlabel('Progression through Epoch / %')
+    plt.ylabel('Loss / Log10')
+    plt.yscale("log")
+    plt.title(f'Loss Metrics Progression Through Epoch {epoch}')
+    plt.legend()
+    plt.grid(False)
+    plt.savefig(f'{root_dir}/results/loss_metrics_epoch_{epoch}')
+    plt.show()
+
+
+def plot_prediction(
+    model: nn.Module,
+    dataset: torch.utils.data.Dataset,
+    device: torch.device,
+    index: int,
+    root_dir: str,
+    model_name: str
+) -> np.ndarray:
+    """
+    Plot model predictions on a single image.
+    
+    Args:
+        model: Model to use for predictions
+        dataset: Dataset containing images
+        device: Device to run model on
+        index: Index of image to predict on
+        root_dir: Directory to save plot
+        model_name: Name of model for plot title
+        
+    Returns:
+        Numpy array of output image with drawn predictions
+    """
+    # Get image and make prediction
+    img, target = dataset[index]
     with torch.no_grad():
-        image = img[:3, ...].to(device) # take the first 3 elements/channels (RGB) - leave the rest as the same (the '...')
+        image = img[:3, ...].to(device)
         predictions = model([image])
         pred = predictions[0]
     
-    # Move image back to CPU for visualization
+    # Normalize image for visualization
     image = image.cpu()
-    
-    # Normalize each channel independently
     normalized_image = torch.zeros_like(image)
     for c in range(3):
         channel = image[c]
@@ -297,13 +383,9 @@ def plot_prediction(model, dataset, device, index, root_dir: str, model_name):
         if max_val > min_val:
             normalized_image[c] = (channel - min_val) / (max_val - min_val)
     
-    # Convert to 8-bit format for visualization
+    # Convert to uint8 and draw boxes
     image_uint8 = (normalized_image * 255).byte()
-    
-    # Get predicted boxes
     pred_boxes = pred["boxes"].cpu().long()
-    
-    # Draw boxes on image
     output_image = torchvision.utils.draw_bounding_boxes(
         image_uint8,
         pred_boxes,
@@ -311,29 +393,49 @@ def plot_prediction(model, dataset, device, index, root_dir: str, model_name):
         width=3
     )
     
-    # Convert tensor to numpy and ensure proper format for matplotlib
+    # Display and save
     output_image = output_image.permute(1, 2, 0).numpy()
-    
-    # Create figure and display
     plt.figure(figsize=(15, 10))
     plt.imshow(output_image)
     plt.axis('off')
-    
-    # Save the figure
-    plt.savefig(f'{root_dir}/results/prediction_normalized_{index}.png', bbox_inches='tight', pad_inches=0, dpi=300)
-    print(f"Saved normalized prediction as: {root_dir}/results/prediction_normalized_{index}.png")
-    
+    plt.savefig(
+        f'{root_dir}/results/prediction_normalized_{index}.png',
+        bbox_inches='tight',
+        pad_inches=0,
+        dpi=300
+    )
     plt.show()
     plt.close()
-
+    
     return output_image
 
-def plot_eval_metrics(root_dir, precedent_epoch, num_epochs, title=None, **kwargs):
-    progression = [k for k in kwargs] # should be equivalent to num_epochs - precedent_epoch
-
-    # store metrics of interest in lists
-    AP = [v[0] for k, v in kwargs.items()] 
-    AR = [v[8] for k, v in kwargs.items()]
+def plot_eval_metrics(
+    root_dir: str,
+    precedent_epoch: int,
+    num_epochs: int,
+    title: Optional[str] = None,
+    **kwargs: Dict[str, np.ndarray]
+) -> None:
+    """
+    Plot evaluation metrics across training epochs.
+    
+    Args:
+        root_dir: Directory to save plot
+        precedent_epoch: Starting epoch number
+        num_epochs: Total number of epochs
+        title: Optional custom plot title
+        **kwargs: Dictionary containing evaluation metrics for each epoch
+            Each value should be a numpy array containing COCO metrics
+    
+    Note:
+        Plots AP (Average Precision) and AR (Average Recall) metrics
+        from COCO evaluation results
+    """
+    progression = [k for k in kwargs]  # Epoch numbers
+    
+    # Extract metrics of interest
+    AP = [v[0] for k, v in kwargs.items()]  # AP @ IoU 0.50:0.95
+    AR = [v[8] for k, v in kwargs.items()]  # AR @ IoU 0.50:0.95
     
     plt.figure(figsize=(10, 6))
     plt.plot(progression, AP, label='AP @ IoU 0.50:0.95, area=all, maxDets=100')
@@ -342,12 +444,134 @@ def plot_eval_metrics(root_dir, precedent_epoch, num_epochs, title=None, **kwarg
     plt.xlabel('Epochs')
     plt.ylabel('Value')
     
-    if title == None:
-        plt.title(f'Evaluation Metrics from Epoch {precedent_epoch}-{precedent_epoch + num_epochs}')
-    else:
-        plt.title(title) # lets you plot just one epoch's training metrics
+    plot_title = (title if title is not None 
+                 else f'Evaluation Metrics from Epoch {precedent_epoch}-{precedent_epoch + num_epochs}')
+    plt.title(plot_title)
     plt.legend()
     plt.grid(False)
     plt.savefig(f'{root_dir}/results/evaluation_metrics_epochs_{precedent_epoch}-{precedent_epoch + num_epochs}')
     plt.show()
 
+
+def plot_losses_across_epochs(
+    root_dir: str,
+    precedent_epoch: int,
+    epochs: int,
+    **kwargs: Dict[str, List[float]]
+) -> None:
+    """
+    Plot training losses across multiple epochs.
+    
+    Args:
+        root_dir: Directory to save plot
+        precedent_epoch: Starting epoch number
+        epochs: Total number of epochs
+        **kwargs: Dictionary containing loss metrics including:
+            - progression: Progress through training
+            - loss_objectness: Objectness loss values
+            - loss: Total loss values
+            - loss_rpn_box_reg: RPN box regression loss
+            - loss_classifier: Classification loss
+            - lr: Learning rates
+    """
+    # Extract metrics
+    progression = kwargs['progression']
+    loss_objectness = kwargs['loss_objectness']
+    loss = kwargs['loss']
+    loss_rpn_box_reg = kwargs['loss_rpn_box_reg']
+    loss_classifier = kwargs['loss_classifier']
+    
+    plt.figure(figsize=(10, 6))
+    plt.plot(progression, loss, label='Loss')
+    plt.plot(progression, loss_objectness, label='Loss Objectness')
+    plt.plot(progression, loss_rpn_box_reg, label='Loss RPN Box Reg')
+    plt.plot(progression, loss_classifier, label='Loss Classifier')
+
+    plt.xlabel('Epochs')
+    plt.ylabel('Loss / Log10')
+    plt.yscale("log")
+    plt.title(f'Loss Metrics from Epoch {precedent_epoch}-{precedent_epoch + epochs}')
+    plt.legend()
+    plt.grid(False)
+    plt.savefig(f'{root_dir}/results/loss_metrics_epochs_{precedent_epoch}-{precedent_epoch + epochs}')
+    plt.show()
+
+def get_feature_maps(
+    model: nn.Module,
+    input_image: torch.Tensor,
+    target_layer_name: Type[nn.Module]
+) -> Dict[nn.Module, torch.Tensor]:
+    """
+    Extract feature maps from specific layers of the model.
+    
+    Args:
+        model: Model to extract features from
+        input_image: Input image tensor
+        target_layer_name: Type of layer to extract features from
+            (e.g., nn.Conv2d, nn.BatchNorm2d, nn.ReLU)
+            
+    Returns:
+        Dictionary mapping layer instances to their feature maps
+    
+    Note:
+        Uses forward hooks to capture intermediate layer outputs
+        during model forward pass
+    """
+    feature_maps = {}
+    
+    def hook_fn(module: nn.Module, input: torch.Tensor, output: torch.Tensor) -> None:
+        """Store the output of the layer in feature_maps."""
+        feature_maps[module] = output.detach()
+    
+    # Register hooks for target layers
+    hooks = []
+    for name, module in model.backbone.named_modules():
+        if isinstance(module, target_layer_name):
+            hooks.append(module.register_forward_hook(hook_fn))
+    
+    # Forward pass
+    with torch.no_grad():
+        model([input_image])
+    
+    # Remove hooks
+    for hook in hooks:
+        hook.remove()
+    
+    return feature_maps
+
+
+def visualise_feature_maps(
+    feature_maps: Dict[nn.Module, torch.Tensor],
+    num_features: int = 64
+) -> None:
+    """
+    Visualize feature maps from model layers.
+    
+    Args:
+        feature_maps: Dictionary of feature maps from model layers
+        num_features: Maximum number of features to display (default: 64)
+        
+    Creates an 8x8 grid of feature maps for each layer, displaying
+    up to num_features maps.
+    """
+    for layer, feature_map in feature_maps.items():
+        # Get first image in batch
+        feature_map = feature_map[0]
+        
+        # Limit number of features to display
+        num_to_plot = min(feature_map.size(0), num_features)
+        
+        fig, axs = plt.subplots(8, 8, figsize=(20, 20))
+        fig.suptitle(f'Feature Maps for Layer: {layer}')
+        
+        for i in range(num_to_plot):
+            ax = axs[i // 8, i % 8]
+            ax.imshow(feature_map[i].cpu(), cmap='gray')
+            ax.axis('off')
+        
+        # Clear unused subplots
+        for i in range(num_to_plot, 64):
+            axs[i // 8, i % 8].axis('off')
+        
+        plt.tight_layout()
+        plt.show()
