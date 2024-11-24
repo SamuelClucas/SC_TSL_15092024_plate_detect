@@ -100,4 +100,4 @@ results from [analysis 0002](0002_functional_Faster_R-CNN.md).
 
 **Analysis 0002:**
 
-![evaluation_analysis_0002](../results/0002_15_epochs/02_fix/evaluation_metrics_epochs_0-15.png)
+![evaluation_analysis_0002](../results/0005_no_double_normalisation/evaluation_metrics_epochs_0-15.png)
