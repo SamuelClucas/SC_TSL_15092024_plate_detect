@@ -22,6 +22,7 @@ from torchvision.transforms import v2 as T
 from collections import defaultdict
 from  torchvision_deps.engine import train_one_epoch, evaluate # used by evaluate_model()
 from torchvision_deps.T_and_utils import utils
+from typing import Dict, Any, Optional
 
 def get_model_instance_object_detection(num_class: int):
     # New weights with accuracy 80.858%
@@ -118,48 +119,104 @@ def plot_losses_across_epochs(root_dir: str, precedent_epoch: int, epochs: int, 
     plt.savefig(f'{root_dir}/results/loss_metrics_epochs_{precedent_epoch}-{precedent_epoch + epochs}')
     plt.show()
 
-def train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, root_dir, optimizer): 
+def train(
+    model: torch.nn.Module,
+    train_loader: torch.utils.data.DataLoader, 
+    validation_loader: torch.utils.data.DataLoader,
+    device: torch.device,
+    num_epochs: int = 15,
+    precedent_epoch: int = 0,
+    root_dir: str = '../',
+    optimizer: Optional[torch.optim.Optimizer] = None,
+    **kwargs
+) -> int:
+    """
+    Train an object detection model.
+    
+    Args:
+        model: The model to train
+        data_loader: Training data loader
+        data_loader_test: Validation/test data loader
+        device: Device to train on (CPU/GPU)
+        num_epochs: Number of epochs to train (default: 15)
+        precedent_epoch: Starting epoch number (default: 0)
+        root_dir: Directory for saving outputs (default: '../')
+        optimizer: Optimizer for training
+        **kwargs: Additional arguments including:
+            - lr_step_size: Learning rate scheduler step size (default: 3)
+            - lr_gamma: Learning rate decay factor (default: 0.1)
+            - print_freq: Frequency of printing training progress (default: 1)
+    
+    Returns:
+        int: Final epoch number
+    """
     model.train()
-    # Initialize lists to store metrics
+    
+    # Initialize metric storage
     losses_across_epochs = defaultdict(list)
     evaluation_across_epochs = defaultdict(list)
     
-    # and a learning rate scheduler
+    # Set up learning rate scheduler with configurable parameters
     lr_scheduler = torch.optim.lr_scheduler.StepLR(
         optimizer,
-        step_size=3,
-        gamma=0.1
+        step_size=kwargs.get('lr_step_size', 3),
+        gamma=kwargs.get('lr_gamma', 0.1)
     )
 
     for epoch in range(num_epochs):
-    # train for one epoch, printing every iteration
-        metric_logger = train_one_epoch(model, optimizer, data_loader, device, epoch, print_freq=1)
-        for k, v in metric_logger.intra_epoch_loss.items(): # <----- insertion here
-            print(f"\n Key: {k}\n Value: {v}") # <----- insertion here
-            # Get the average loss metrics at this epoch
+        # Train for one epoch with configurable print frequency
+        metric_logger = train_one_epoch(
+            model, 
+            optimizer, 
+            train_loader , 
+            device, 
+            epoch, 
+            print_freq=kwargs.get('print_freq', 1)
+        )
+        
+        # Log intra-epoch metrics
+        for k, v in metric_logger.intra_epoch_loss.items():
+            print(f"\n Key: {k}\n Value: {v}")
+            
+        # Store average loss metrics
         for k, v in metric_logger.meters.items():
-            losses_across_epochs[k].append(v.value) # see SmoothedValude in utils.py for value as v is a SmoothedValue object
+            losses_across_epochs[k].append(v.value)
         losses_across_epochs['progression'].append(((epoch+1)/num_epochs)*100)
 
-        # plot loss throughout *this* epoch's training, save plot in results
-        plot_training_loss(root_dir, epoch, **{k: v for k, v in metric_logger.intra_epoch_loss.items()})     # <----- insertion here
+        # Plot training loss
+        plot_training_loss(
+            root_dir, 
+            epoch, 
+            **{k: v for k, v in metric_logger.intra_epoch_loss.items()}
+        )
 
-        # Save checkpoint
+        # Save model checkpoint
         save_checkpoint(model, optimizer, epoch + precedent_epoch, root_dir)
 
-        # Evaluate model perfomance on holdout dataset and append results to evaluation metric dictionary with epoch as key
-        eval_metrics = evaluate_model(model, data_loader_test, device)
+        # Evaluate model on test set
+        eval_metrics = evaluate_model(model, validation_loader, device)
         evaluation_across_epochs[f'{epoch}'] = eval_metrics
 
-        # Update the learning rate
+        # Update learning rate
         lr_scheduler.step()
 
-    # adding a print statement here to view evaluation_across_epochs using dict comprehension
+    # Print evaluation metrics
     {print(k, '\n', v) for k, v in evaluation_across_epochs.items()}
 
-    # plot average train losses across several epochs
-    plot_losses_across_epochs(root_dir, precedent_epoch, num_epochs, **{k: v for k, v in losses_across_epochs.items()})
-    plot_eval_metrics(root_dir, precedent_epoch, num_epochs, **{k: v for k, v in evaluation_across_epochs.items()})
+    # Plot metrics across epochs
+    plot_losses_across_epochs(
+        root_dir, 
+        precedent_epoch, 
+        num_epochs, 
+        **{k: v for k, v in losses_across_epochs.items()}
+    )
+    plot_eval_metrics(
+        root_dir, 
+        precedent_epoch, 
+        num_epochs, 
+        **{k: v for k, v in evaluation_across_epochs.items()}
+    )
+    
     return num_epochs + precedent_epoch
 
 
@@ -171,10 +228,10 @@ def load_model(root_dir: str, num_classes: int, model_file_name: str):
     epoch = checkpoint['epoch']
     return model, optimizer, epoch
 
-def evaluate_model(model, data_loader_test,device):
+def evaluate_model(model, validation_loader,device):
     model.eval()
 
-    coco_evaluator = evaluate(model, data_loader_test, device=device)
+    coco_evaluator = evaluate(model, validation_loader, device=device)
     print(coco_evaluator)
     # Extract evaluation metrics
     eval_metrics = coco_evaluator.coco_eval['bbox'].stats

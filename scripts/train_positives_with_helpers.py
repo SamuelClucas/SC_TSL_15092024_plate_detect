@@ -1,81 +1,169 @@
-import ssl
-ssl._create_default_https_context = ssl._create_unverified_context
+"""
+Plate Detection Model Training Script
 
-from plate_detect import Plate_Image_Dataset, helper_training_functions
-import torch
+This script handles the training of a computer vision model for detecting plates in images.
+It sets up data loading, model initialization, and executes the training loop.
 
-from torchvision.transforms.v2 import functional as F
+The script expects:
+- A CSV file containing image annotations (e.g., bounding box coordinates for each sample index)
+- A directory of positive sample images
+- CUDA-capable GPU (will fall back to CPU if unavailable)
+
+Author: Original by Samuel Clucas, Documentation added by next maintainer
+Last Modified: November 2024
+"""
+
 from pathlib import Path
-from typing import Dict, Union
-from torchvision.models.detection.faster_rcnn import fasterrcnn_resnet50_fpn_v2, FastRCNNPredictor, FasterRCNN_ResNet50_FPN_V2_Weights
-from torchvision.transforms import v2 as T
-import os
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
+from typing import Tuple, List
+import torch
+from torch.utils.data import DataLoader, Dataset, Subset
+from torchvision import transforms
+from torchvision.ops.boxes import masks_to_boxes
 import numpy as np
-import PIL
-from torchvision.utils import draw_bounding_boxes
-from torchvision.io import read_image
-from torch import nn
-import torchvision_deps.T_and_utils.utils as utils
+import pandas as pd
+
+from plate_detect import (
+    Plate_Image_Dataset,
+    helper_training_functions
+)
+import torchvision_deps
+from torchvision_deps.T_and_utils import utils
+
+
+def setup_device() -> torch.device:
+    """Configure computation device (GPU if available, else CPU)."""
+    return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+
+def setup_paths() -> Tuple[Path, Path, Path]:
+    """
+    Initialize project directories and files.
+    
+    Returns:
+        Tuple containing:
+        - project_root: Base directory of the project
+        - annotations_file: Path to CSV containing image labels
+        - img_dir: Directory containing training images
+    """
+    project_root = Path.cwd()
+    annotations_file = project_root.joinpath('lib', 'labels.csv')
+    img_dir = project_root.joinpath('raw', 'positives')
+    
+    print(f'Project root directory: {project_root}')
+    print(f'Training labels csv file: {annotations_file}')
+    print(f'Training dataset directory: {img_dir}')
+    
+    return project_root, annotations_file, img_dir
+
+
+def create_datasets(
+    dataset: Dataset,
+    validation_size: int
+) -> Tuple[Subset, Subset]:
+    """
+    Split dataset into training and validation sets.
+    
+    Args:
+        dataset: Complete dataset to split
+        validation_size: Number of samples for validation
+    
+    Returns:
+        Tuple of (training_dataset, validation_dataset)
+    """
+    dataset_size = len(dataset)
+    indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
+    
+    return (
+        Subset(dataset, indices[:-validation_size]),
+        Subset(dataset, indices[-validation_size:])
+    )
+
+
+def create_dataloaders(
+    train_dataset: Subset,
+    val_dataset: Subset,
+    batch_size: int = 1
+) -> Tuple[DataLoader, DataLoader]:
+    """
+    Create DataLoader instances for training and validation.
+    
+    Args:
+        train_dataset: Training dataset subset
+        val_dataset: Validation dataset subset
+        batch_size: Batch size for training (default: 1)
+    
+    Returns:
+        Tuple of (train_loader, validation_loader)
+    """
+    return (
+        DataLoader(
+            train_dataset,
+            batch_size=batch_size,
+            shuffle=True,
+            collate_fn=utils.collate_fn
+        ),
+        DataLoader(
+            val_dataset,
+            batch_size=batch_size,
+            shuffle=False,
+            collate_fn=utils.collate_fn
+        )
+    )
+
+
+def main():
+    """Main execution function for training pipeline."""
+    # Setup computation device
+    device = setup_device()
+    
+    # Initialize project paths
+    project_root, annotations_file, img_dir = setup_paths()
+    
+    # Configure data transforms
+    transform = transforms.v2.Compose([
+        transforms.v2.ToDtype(torch.float32, scale=True)
+    ])
+    
+    # Initialize dataset
+    dataset = Plate_Image_Dataset.Plate_Image_Dataset(
+        annotations_file=str(annotations_file),
+        img_dir=str(img_dir),
+        transforms=transform
+    )
+    
+    # Split dataset and create data loaders
+    train_dataset, val_dataset = create_datasets(
+        dataset=dataset,
+        validation_size=50
+    )
+    
+    train_loader, val_loader = create_dataloaders(
+        train_dataset=train_dataset,
+        val_dataset=val_dataset
+    )
+    
+    # Initialize model (2 classes: background and plate)
+    model, optimizer, preprocess = helper_training_functions.get_model_instance_object_detection(
+        num_class=2
+    )
+    model.to(device)
+    
+    # Execute training loop
+    num_epochs = 15
+    precedent_epoch = 0
+    save_dir = '../'
+    
+    final_epoch = helper_training_functions.train(
+        model=model,
+        train_loader=train_loader,
+        validation_loader=val_loader,
+        device=device,
+        num_epochs=num_epochs,
+        precedent_epoch=precedent_epoch,
+        save_dir=save_dir,
+        optimizer=optimizer
+    )
+
 
 if __name__ == '__main__':
-    # train on the GPU or on the CPU, if a GPU is not available
-    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
-
-    project_dir_root: Path= Path.cwd() # 'SC_TSL_15092024_Plate_Detect/' type PosixPath for UNIX, WindowsPath for windows...
-    print(f'Project root directory: {str(project_dir_root)}')
-
-    annotations_file: Path = project_dir_root.joinpath('lib', 'labels.csv')
-    print(f'Training labels csv file: {annotations_file}')
-
-    img_dir: Path= project_dir_root.joinpath('raw', 'positives')  # 'SC_TSL_15092024_Plate_Detect/train/images/positives/' on UNIX systems
-    print(f'Training dataset directory: {img_dir}')
-
-    num_class = 2 # plate or background
-    # creates resnet50 v2 faster r cnn model with new head for class classification
-    model, preprocess = helper_training_functions.get_model_instance_object_detection(num_class)
-    # move model to the right device
-    model.to(device)
-
-    dataset: Plate_Image_Dataset = Plate_Image_Dataset.Plate_Image_Dataset(
-        img_dir=str(img_dir), 
-        annotations_file=str(annotations_file),
-        transforms=preprocess, # converts Tensor image, PIL image, NumPy ndarray into FloatTensor and scales pixel intensities in range [0.,1.].
-        )
-
-    # split the dataset in train and test set
-    dataset_size = len(dataset)
-    test_size = min(50, int(dataset_size // 5))  # Use 20% of data for testing, or 50 samples, whichever is smaller
-    indices = [int(i) for i in torch.randperm(dataset_size).tolist()]
-
-    dataset_test = torch.utils.data.Subset(dataset, indices[-test_size:])
-    dataset = torch.utils.data.Subset(dataset, indices[:-test_size])
-
-    data_loader = torch.utils.data.DataLoader(
-        dataset,
-        batch_size=4,
-        shuffle=True,
-        collate_fn=utils.collate_fn
-    )
-
-    data_loader_test = torch.utils.data.DataLoader(
-        dataset_test,
-        batch_size=4,
-        shuffle=False,
-        collate_fn=utils.collate_fn
-    )
-
-    num_epochs = 10
-    precedent_epoch = 0
-    save_dir = 'results'
-
-    epoch, loss_metrics = helper_training_functions.train(model, data_loader, data_loader_test, device, num_epochs, precedent_epoch, save_dir)
-
-    eval_metrics = helper_training_functions.evaluate_model(model, data_loader_test,device)
-
-    helper_training_functions.plot_eval_metrics(eval_metrics, 0)
-
-    #helper_training_functions.tensorboard_summary('test', dataset, model, data_loader)
-
-    print("\n -end-")
+    main()
